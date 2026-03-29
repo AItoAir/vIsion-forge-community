@@ -1,0 +1,599 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+  .annotation-container {
+    position: relative;
+    display: inline-block;
+  }
+  #annotation-canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 10;
+  }
+  .annotation-row {
+    cursor: pointer;
+  }
+  .annotation-row.active {
+    background-color: rgba(13, 110, 253, 0.15);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set status_class = "text-bg-secondary" %}
+{% if item.status.value == "in_progress" %}
+  {% set status_class = "text-bg-primary" %}
+{% elif item.status.value == "needs_review" %}
+  {% set status_class = "text-bg-warning" %}
+{% elif item.status.value == "done" %}
+  {% set status_class = "text-bg-success" %}
+{% endif %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <a
+      href="{{ url_for('project_items', project_id=project.id) }}"
+      class="text-decoration-none small text-muted"
+      hx-boost="false"
+      >&larr; {{ project.name }}</a
+    >
+    <div class="mt-2">
+      <a
+        href="{{ url_for('label_item', item_id=item.id) }}"
+        class="btn btn-sm btn-outline-light"
+        hx-boost="false"
+      >
+        Open labeling screen
+      </a>
+    </div>
+  </div>
+  <div class="d-flex flex-column align-items-end gap-2">
+    <div class="btn-group btn-group-sm" role="group" aria-label="Item navigation">
+      <a
+        class="btn btn-outline-light {% if not prev_item_id %}disabled{% endif %}"
+        href="{% if prev_item_id %}{{ url_for('review_item', item_id=prev_item_id) }}{% else %}#{% endif %}"
+        hx-boost="false"
+        >← Prev item</a
+      >
+      <a
+        class="btn btn-outline-light {% if not next_item_id %}disabled{% endif %}"
+        href="{% if next_item_id %}{{ url_for('review_item', item_id=next_item_id) }}{% else %}#{% endif %}"
+        hx-boost="false"
+        >Next item →</a
+      >
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Changed item navigation">
+      <a
+        id="btn-prev-changed-item"
+        class="btn btn-outline-warning {% if not prev_changed_item_id %}disabled{% endif %}"
+        href="{% if prev_changed_item_id %}{{ url_for('review_item', item_id=prev_changed_item_id) }}{% else %}#{% endif %}"
+        hx-boost="false"
+        >← Prev changed</a
+      >
+      <a
+        id="btn-next-changed-item"
+        class="btn btn-outline-warning {% if not next_changed_item_id %}disabled{% endif %}"
+        href="{% if next_changed_item_id %}{{ url_for('review_item', item_id=next_changed_item_id) }}{% else %}#{% endif %}"
+        hx-boost="false"
+        >Next changed →</a
+      >
+    </div>
+  </div>
+</div>
+
+{% if item.kind.value == "video" and not media_conversion.ready %}
+<div class="card bg-dark border-secondary shadow-sm">
+  <div class="card-body p-4">
+    <div
+      data-media-conversion-root
+      data-media-conversion-status="{{ media_conversion.status }}"
+      data-status-url="{{ url_for('item_media_conversion_status', item_id=item.id) }}"
+      data-reload-on-ready="true"
+    >
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <span class="badge text-bg-info">Video</span>
+        <span class="badge {{ media_conversion.badge_class }}" data-media-conversion-badge>{{ media_conversion.label }}</span>
+        <span class="small text-secondary">
+          {% if item.fps %}{{ '%.2f'|format(item.fps) }} fps{% endif %}
+          {% if item.duration_sec %}
+            {% if item.fps %}・{% endif %}{{ '%.2f'|format(item.duration_sec) }}s
+          {% endif %}
+        </span>
+      </div>
+      <h2 class="h5 mb-2">Converting video for review playback</h2>
+      <p class="text-secondary mb-2" data-media-conversion-message>{{ media_conversion.message }}</p>
+      <p class="mb-3 {% if media_conversion.failed %}text-danger{% else %}text-secondary{% endif %} {% if not media_conversion.detail %}d-none{% endif %}" data-media-conversion-detail>{{ media_conversion.detail or '' }}</p>
+      <div class="d-flex flex-wrap gap-2">
+        <a
+          href="{{ url_for('project_items', project_id=project.id) }}"
+          class="btn btn-sm btn-outline-light"
+          hx-boost="false"
+        >
+          Back to items
+        </a>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-info"
+          onclick="window.location.reload()"
+        >
+          Refresh now
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="row g-3">
+  <div class="col-md-8">
+    {% if item.kind.value == "image" %}
+    <div class="annotation-container">
+      <div id="annotation-loading-overlay" class="annotation-loading-overlay">
+        <div class="spinner-border spinner-border-sm" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+        <img
+          id="item-image"
+          src="{{ display_media_url }}"
+          alt="item image"
+          class="img-fluid"
+        />
+      <canvas id="annotation-canvas"></canvas>
+      <div id="region-comment-tooltip" class="region-comment-tooltip" hidden></div>
+    </div>
+    {% else %}
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge text-bg-info">Video</span>
+        <span class="small text-secondary">FPS: {{ item.fps or 30 }}</span>
+        {% if item.duration_sec %}
+        <span class="small text-secondary">Duration: {{ '%.2f'|format(item.duration_sec) }}s</span>
+        {% endif %}
+      </div>
+      <div class="d-flex align-items-center gap-3">
+        <div class="small">
+          Frame index:
+          <span id="frame-display-current">1</span>
+          /
+          <span id="frame-display-total">1</span>
+        </div>
+        <div class="small text-secondary">
+          Time: <span id="time-display">0.00</span>s
+        </div>
+        <button
+          id="btn-copy-frame-link"
+          type="button"
+          class="btn btn-sm btn-outline-info"
+        >
+          <i class="bi bi-link-45deg"></i>
+          <span id="frame-link-button-label">Copy frame link</span>
+        </button>
+      </div>
+    </div>
+    <div class="btn-group btn-group-sm mb-2" role="group">
+      <button id="btn-toggle-play" type="button" class="btn btn-outline-light">
+        Play/Pause
+      </button>
+      <button id="btn-prev5-frame" type="button" class="btn btn-outline-light">
+        -5
+      </button>
+      <button id="btn-prev-frame" type="button" class="btn btn-outline-light">
+        -1
+      </button>
+      <button id="btn-next-frame" type="button" class="btn btn-outline-light">
+        +1
+      </button>
+      <button id="btn-next5-frame" type="button" class="btn btn-outline-light">
+        +5
+      </button>
+    </div>
+
+    <div class="annotation-container">
+      <div id="annotation-loading-overlay" class="annotation-loading-overlay">
+        <div class="spinner-border spinner-border-sm" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+      <video
+        id="item-video"
+        src="{{ display_media_url }}"
+        class="w-100"
+        playsinline
+        preload="auto"
+      ></video>
+      <canvas id="annotation-canvas"></canvas>
+      <div id="region-comment-tooltip" class="region-comment-tooltip" hidden></div>
+    </div>
+
+    <div class="video-timeline" id="video-timeline">
+      <div class="video-timeline-track" id="video-timeline-track">
+        <div
+          class="video-timeline-annotation-layer"
+          id="video-timeline-annotation-layer"
+        ></div>
+        <div
+          class="video-timeline-playhead"
+          id="video-timeline-playhead"
+        ></div>
+      </div>
+      <div class="small text-secondary mt-1">
+        Click on the bar to jump to a frame. Orange ticks indicate frames that
+        have at least one annotation.
+      </div>
+    </div>
+
+    <div class="video-objects-panel">
+      <div class="small text-secondary mb-1">
+        Object timelines (one row per object). Click markers to jump to a specific frame.
+      </div>
+      <div id="object-timeline-list" class="object-timeline-list">
+        <!-- populated by JS -->
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-md-4">
+    <div class="card bg-dark border-secondary mb-3">
+      <div id="review-action-panel" class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="small text-secondary">Item status</span>
+          <span id="item-status-badge" class="badge {{ status_class }}">{{ item.status.value }}</span>
+        </div>
+        <div class="alert alert-secondary py-2 small mb-3">
+          This screen is always read-only. Use the review actions below to update review status.
+        </div>
+        <div class="alert alert-secondary py-2 small mb-3">
+          Shortcuts: Y = Approve, Shift+Y = Approve + next, U = Reset, Shift+U = Reset + next, R = Focus reject comment, Ctrl/Cmd+Enter = Reject, Ctrl/Cmd+Shift+Enter = Reject + next, A/D = Prev/Next item, Shift+A / Shift+D = Prev/Next changed item, K / J = Prev/Next changed annotation.
+        </div>
+        {% if can_review %}
+        <div class="d-grid gap-2">
+          <form
+            id="review-approve-form"
+            method="post"
+            action="{{ url_for('approve_item_review', item_id=item.id) }}"
+            hx-boost="false"
+          >
+            <input type="hidden" name="redirect_to" value="{{ url_for('review_item', item_id=item.id) }}" />
+            <div class="d-flex gap-2">
+              <button
+                type="submit"
+                class="btn btn-sm btn-success w-100"
+                onclick="this.form.redirect_to.value='{{ url_for('review_item', item_id=item.id) }}';"
+              >
+                Approve item
+              </button>
+              {% if next_item_id %}
+              <button
+                type="submit"
+                class="btn btn-sm btn-outline-success"
+                onclick="this.form.redirect_to.value='{{ url_for('review_item', item_id=next_item_id) }}';"
+              >
+                Approve + next
+              </button>
+              {% endif %}
+            </div>
+          </form>
+          <form
+            id="review-reset-form"
+            method="post"
+            action="{{ url_for('reset_item_review', item_id=item.id) }}"
+            hx-boost="false"
+          >
+            <input type="hidden" name="redirect_to" value="{{ url_for('review_item', item_id=item.id) }}" />
+            <div class="d-flex gap-2">
+              <button
+                type="submit"
+                class="btn btn-sm btn-outline-secondary w-100"
+                onclick="this.form.redirect_to.value='{{ url_for('review_item', item_id=item.id) }}';"
+              >
+                Reset to pending review
+              </button>
+              {% if next_item_id %}
+              <button
+                type="submit"
+                class="btn btn-sm btn-outline-secondary"
+                onclick="this.form.redirect_to.value='{{ url_for('review_item', item_id=next_item_id) }}';"
+              >
+                Reset + next
+              </button>
+              {% endif %}
+            </div>
+          </form>
+          <form
+            id="review-reject-form"
+            method="post"
+            action="{{ url_for('reject_item_review', item_id=item.id) }}"
+            class="mt-2"
+            hx-boost="false"
+          >
+            <input type="hidden" name="redirect_to" value="{{ url_for('review_item', item_id=item.id) }}" />
+            <label for="reject-comment" class="form-label small">Reject comment</label>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary review-template-btn" data-template="Missing object annotation.">
+                Missing object
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary review-template-btn" data-template="Wrong class label.">
+                Wrong class
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary review-template-btn" data-template="Geometry placement needs correction.">
+                Geometry issue
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary review-template-btn" data-template="Track continuity is broken across frames.">
+                Track issue
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary review-template-btn" data-template="Frame state flags need correction.">
+                State flags
+              </button>
+            </div>
+            <textarea
+              id="reject-comment"
+              name="comment"
+              rows="4"
+              class="form-control form-control-sm mb-2"
+              placeholder="Explain what needs to be fixed"
+              required
+            ></textarea>
+            <div class="d-flex gap-2">
+              <button
+                type="submit"
+                class="btn btn-sm btn-danger w-100"
+                onclick="this.form.redirect_to.value='{{ url_for('review_item', item_id=item.id) }}';"
+              >
+                Reject item
+              </button>
+              {% if next_item_id %}
+              <button
+                type="submit"
+                class="btn btn-sm btn-outline-danger"
+                onclick="this.form.redirect_to.value='{{ url_for('review_item', item_id=next_item_id) }}';"
+              >
+                Reject + next
+              </button>
+              {% endif %}
+            </div>
+          </form>
+        </div>
+        {% else %}
+        <div class="alert alert-secondary py-2 small mb-0">
+          Review actions are not available for your role.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if review_change_awareness %}
+    <div class="card bg-dark border-secondary mb-3">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h2 class="h6 mb-0">Changes since last reject</h2>
+          <span class="small text-secondary">
+            Baseline rev {{ review_change_awareness.base_revision if review_change_awareness.base_revision is not none else "?" }}
+            → Current rev {{ review_change_awareness.current_revision }}
+          </span>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <span class="badge text-bg-success">New {{ review_change_awareness.counts.new }}</span>
+          <span class="badge text-bg-warning">Changed {{ review_change_awareness.counts.changed }}</span>
+          <span class="badge text-bg-secondary">Unchanged {{ review_change_awareness.counts.unchanged }}</span>
+          <span class="badge text-bg-danger">Deleted {{ review_change_awareness.counts.deleted }}</span>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <button id="btn-prev-changed-annotation" type="button" class="btn btn-sm btn-outline-warning">
+            Prev changed annotation
+          </button>
+          <button id="btn-next-changed-annotation" type="button" class="btn btn-sm btn-outline-warning">
+            Next changed annotation
+          </button>
+          <div class="form-check ms-1">
+            <input class="form-check-input" type="checkbox" id="review-show-only-changed" />
+            <label class="form-check-label small" for="review-show-only-changed">
+              Show only changed
+            </label>
+          </div>
+        </div>
+        <div class="small text-secondary mb-2">
+          Based on the latest reject snapshot{% if review_change_awareness.baseline_created_at %} from {{ review_change_awareness.baseline_created_at }}{% endif %}.
+          New annotations are highlighted in green and changed ones in amber.
+        </div>
+        {% if review_change_awareness.baseline_comment %}
+        <div class="small border rounded px-2 py-2 mb-2">
+          {{ review_change_awareness.baseline_comment }}
+        </div>
+        {% endif %}
+        {% if review_change_awareness.deleted_annotations %}
+        <div class="small text-secondary mb-1">Deleted since last reject</div>
+        <div class="small">
+          {% for deleted in review_change_awareness.deleted_annotations[:8] %}
+          <div>
+            {{ label_names_by_id.get(deleted.label_class_id, "Unknown") }}
+            {% if deleted.track_id is not none %} · Obj {{ deleted.track_id }}{% endif %}
+            {% if deleted.frame_index is not none %} · Frame {{ deleted.frame_index + 1 }}{% endif %}
+          </div>
+          {% endfor %}
+          {% if review_change_awareness.deleted_annotations|length > 8 %}
+          <div class="text-secondary">
+            + {{ review_change_awareness.deleted_annotations|length - 8 }} more deleted annotations
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card bg-dark border-secondary mb-3">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h2 class="h6 mb-0">Review comments</h2>
+          <button id="btn-reset-view" type="button" class="btn btn-sm btn-outline-light">
+            Reset view
+          </button>
+        </div>
+        <div class="small text-secondary mb-2">
+          Latest comments are shown first.
+        </div>
+        <div class="border rounded small" style="max-height: 220px; overflow-y: auto">
+          {% for comment in review_comments %}
+          <div class="px-2 py-2 border-bottom">
+            <div class="d-flex justify-content-between align-items-center small text-secondary mb-1">
+              <span>{{ comment.reviewer.email if comment.reviewer else 'Unknown reviewer' }}</span>
+              <span>{{ comment.created_at }}</span>
+            </div>
+            <div>{{ comment.comment }}</div>
+          </div>
+          {% else %}
+          <div class="px-2 py-3 text-muted text-center">
+            No review comments yet.
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card bg-dark border-secondary mb-3">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div>
+            <h2 class="h6 mb-0">Region comments</h2>
+            <div class="small text-secondary">
+              Click the canvas comment badge to inspect the note attached to that area.
+            </div>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <span class="badge text-bg-warning">Comments <span id="region-comment-count">0</span></span>
+            <button
+              id="btn-toggle-region-comments"
+              type="button"
+              class="btn btn-sm btn-outline-secondary"
+            >
+              Hide overlay
+            </button>
+          </div>
+        </div>
+        <div id="region-comment-detail" class="region-comment-detail mt-3">
+          <div class="small text-secondary">Select a comment badge to view its details.</div>
+        </div>
+        <div id="region-comment-list" class="border rounded small mt-3" style="max-height: 220px; overflow-y: auto">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="h6 mb-0">Annotations</h2>
+      <div class="form-check form-switch m-0">
+        <input class="form-check-input" type="checkbox" id="toggle-object-labels" />
+        <label class="form-check-label small text-secondary" for="toggle-object-labels">
+          Canvas labels
+        </label>
+      </div>
+    </div>
+    <div
+      id="annotation-list"
+      class="border rounded small"
+      style="max-height: 360px; overflow-y: auto"
+    >
+      <!-- populated by JS -->
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script id="initial-annotations" type="application/json">
+  [
+  {% for ann in annotations %}
+    {
+      "id": {{ ann.id }},
+      "label_class_id": {{ ann.label_class_id }},
+      "frame_index": {{ ann.frame_index if ann.frame_index is not none else "null" }},
+      "x1": {{ ann.x1 }},
+      "y1": {{ ann.y1 }},
+      "x2": {{ ann.x2 }},
+      "y2": {{ ann.y2 }},
+      "polygon_points": {{ ann.polygon_points | tojson }},
+      "status": "{{ ann.status.value }}",
+      "is_occluded": {{ "true" if ann.is_occluded else "false" }},
+      "is_truncated": {{ "true" if ann.is_truncated else "false" }},
+      "is_outside": {{ "true" if ann.is_outside else "false" }},
+      "is_lost": {{ "true" if ann.is_lost else "false" }},
+      "review_change_state": {% if review_change_awareness %}{{ review_change_awareness.states_by_client_uid.get(ann.client_uid) | tojson }}{% else %}null{% endif %},
+      "track_id": {{ ann.track_id if ann.track_id is not none else "null" }},
+      "client_uid": "{{ ann.client_uid }}",
+      "propagation_frames": {{ ann.propagation_frames if ann.propagation_frames is not none else "null" }},
+      "created_by": {{ ann.created_by if ann.created_by is not none else "null" }},
+      "updated_by": {{ ann.updated_by if ann.updated_by is not none else "null" }},
+      "created_at": {{ ann.created_at.isoformat() | tojson }},
+      "updated_at": {{ ann.updated_at.isoformat() | tojson }},
+      "created_by_user": {% if ann.created_by_user %}{{ {"id": ann.created_by_user.id, "email": ann.created_by_user.email} | tojson }}{% else %}null{% endif %},
+      "updated_by_user": {% if ann.updated_by_user %}{{ {"id": ann.updated_by_user.id, "email": ann.updated_by_user.email} | tojson }}{% else %}null{% endif %}
+    }{% if not loop.last %},{% endif %}
+  {% endfor %}
+  ]
+</script>
+
+<script id="initial-region-comments" type="application/json">
+  [
+  {% for region_comment in region_comments %}
+    {
+      "id": {{ region_comment.id }},
+      "client_uid": "{{ region_comment.client_uid }}",
+      "frame_index": {{ region_comment.frame_index if region_comment.frame_index is not none else "null" }},
+      "x1": {{ region_comment.x1 }},
+      "y1": {{ region_comment.y1 }},
+      "x2": {{ region_comment.x2 }},
+      "y2": {{ region_comment.y2 }},
+      "comment": {{ region_comment.comment | tojson }},
+      "created_by": {{ region_comment.created_by if region_comment.created_by is not none else "null" }},
+      "updated_by": {{ region_comment.updated_by if region_comment.updated_by is not none else "null" }},
+      "created_at": {{ region_comment.created_at.isoformat() | tojson }},
+      "updated_at": {{ region_comment.updated_at.isoformat() | tojson }},
+      "created_by_user": {% if region_comment.created_by_user %}{{ {"id": region_comment.created_by_user.id, "email": region_comment.created_by_user.email} | tojson }}{% else %}null{% endif %},
+      "updated_by_user": {% if region_comment.updated_by_user %}{{ {"id": region_comment.updated_by_user.id, "email": region_comment.updated_by_user.email} | tojson }}{% else %}null{% endif %}
+    }{% if not loop.last %},{% endif %}
+  {% endfor %}
+  ]
+</script>
+
+<script id="label-classes-data" type="application/json">
+  [
+  {% for lc in label_classes %}
+    {
+      "id": {{ lc.id }},
+      "name": "{{ lc.name }}",
+      "color_hex": "{{ lc.color_hex }}",
+      "shortcut_key": "{{ lc.shortcut_key or '' }}",
+      "geometry_kind": "{{ lc.geometry_kind.value }}"
+    }{% if not loop.last %},{% endif %}
+  {% endfor %}
+  ]
+</script>
+{% endblock %}
+
+{% block extra_js %}
+{% if item.kind.value != "video" or media_conversion.ready %}
+<script type="module" src="{{ url_for('static', path='js/annotation_canvas.js') }}?v=20260328_object_label_toggle"></script>
+<script type="module" src="{{ url_for('static', path='js/review_shortcuts.js') }}"></script>
+{% endif %}
+{% if item.kind.value == "video" %}
+<script type="module" src="{{ url_for('static', path='js/media_conversion_status.js') }}?v=20260328_media_conversion_status"></script>
+{% endif %}
+<script>
+  window.LABEL_FORGE_CONFIG = {
+    itemId: {{ item.id }},
+    apiBase: "/api",
+    kind: "{{ item.kind.value }}",
+    fps: {{ item.fps or 30 }},
+    durationSec: {{ item.duration_sec if item.duration_sec is not none else 'null' }},
+    prevItemId: {{ prev_item_id if prev_item_id is not none else 'null' }},
+    prevItemUrl: {% if prev_item_id %}"{{ url_for('review_item', item_id=prev_item_id) }}"{% else %}null{% endif %},
+    nextItemUrl: {% if next_item_id %}"{{ url_for('review_item', item_id=next_item_id) }}"{% else %}null{% endif %},
+    prevChangedItemUrl: {% if prev_changed_item_id %}"{{ url_for('review_item', item_id=prev_changed_item_id) }}"{% else %}null{% endif %},
+    nextChangedItemUrl: {% if next_changed_item_id %}"{{ url_for('review_item', item_id=next_changed_item_id) }}"{% else %}null{% endif %},
+    annotationRevision: {{ annotation_revision }},
+    readOnly: true,
+    mediaConversion: {{ media_conversion | tojson }},
+  };
+</script>
+{% endblock %}

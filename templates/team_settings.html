@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="team-settings-page">
+  <div class="mb-3">
+    <a
+      href="{{ url_for('teams_index') }}"
+      class="text-decoration-none small text-muted"
+      >&larr; Teams</a
+    >
+  </div>
+
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-2 mb-4">
+    <div>
+      <div class="small text-uppercase text-secondary fw-semibold mb-1">Team settings</div>
+      <h1 class="h4 mb-1">{{ team.name }}</h1>
+      <p class="text-secondary mb-0">
+        Invite members and assign the right role for their work.
+      </p>
+    </div>
+    <div class="small text-secondary">
+      {{ members | length }} member{% if members | length != 1 %}s{% endif %}
+    </div>
+  </div>
+
+  <div class="card bg-dark border-secondary shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+        <div>
+          <h2 class="h6 mb-1">Invite member</h2>
+          <p class="small text-secondary mb-0">
+            This creates or updates the member account immediately.
+          </p>
+        </div>
+        <div>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-light"
+            data-bs-toggle="modal"
+            data-bs-target="#permissionMatrixModal"
+          >
+            View permission matrix
+          </button>
+        </div>
+      </div>
+      <form
+        method="post"
+        action="{{ url_for('invite_team_member', team_id=team.id) }}"
+        class="row g-3"
+      >
+        <div class="col-12 col-lg-4">
+          <label class="form-label small" for="invite-email">Login ID (email)</label>
+          <input
+            type="email"
+            class="form-control"
+            id="invite-email"
+            name="email"
+            placeholder="name@example.com"
+            required
+          />
+          <div class="form-text small">
+            This email becomes the member's login ID.
+          </div>
+        </div>
+        <div class="col-12 col-lg-4">
+          <label class="form-label small" for="invite-password">Initial password</label>
+          <input
+            type="text"
+            class="form-control"
+            id="invite-password"
+            name="password"
+            placeholder="Temporary password"
+            required
+          />
+          <div class="form-text small">
+            Share this password with the member through a separate channel.
+          </div>
+        </div>
+        <div class="col-12 col-sm-7 col-lg-2">
+          <label class="form-label small" for="invite-role">Role</label>
+          <select
+            class="form-select"
+            id="invite-role"
+            name="role"
+          >
+            <option value="annotator">Annotator</option>
+            <option value="reviewer">Reviewer</option>
+            <option value="project_admin">Project admin</option>
+          </select>
+          <div class="form-text small">
+            Choose the member's access level.
+          </div>
+        </div>
+        <div class="col-12 col-sm-5 col-lg-2 d-flex flex-column justify-content-end">
+          <button type="submit" class="btn btn-success w-100 mb-2" id="invite-submit">
+            Invite member
+          </button>
+          <div class="form-text small mt-0">
+            Existing accounts are reassigned to this team and role.
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div
+    class="modal fade"
+    id="permissionMatrixModal"
+    tabindex="-1"
+    aria-labelledby="permissionMatrixModalLabel"
+    aria-hidden="true"
+  >
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content bg-dark border-secondary">
+        <div class="modal-header border-secondary">
+          <div>
+            <h2 class="modal-title fs-5" id="permissionMatrixModalLabel">Permission matrix</h2>
+            <p class="small text-secondary mb-0">
+              This table reflects the current implementation in the app.
+            </p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="small text-secondary mb-3">
+            <span class="badge rounded-pill text-bg-success me-1">Allowed</span>
+            <span class="badge rounded-pill text-bg-secondary">Not allowed</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table align-middle team-role-matrix mb-0">
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  {% for role in role_matrix_columns %}
+                  <th>{{ role.label }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in role_matrix_rows %}
+                <tr>
+                  <th scope="row">
+                    <div class="fw-semibold">{{ row.capability }}</div>
+                    <div class="small text-secondary">{{ row.detail }}</div>
+                  </th>
+                  {% for role in role_matrix_columns %}
+                  <td>
+                    {% if row[role.key] %}
+                    <span class="badge rounded-pill text-bg-success">Allowed</span>
+                    {% else %}
+                    <span class="badge rounded-pill text-bg-secondary">Not allowed</span>
+                    {% endif %}
+                  </td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <ul class="small text-secondary mb-0 mt-3">
+            {% for note in role_matrix_notes %}
+            <li>{{ note }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card bg-dark border-secondary shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <div>
+          <h2 class="h6 mb-1">Members</h2>
+          <p class="small text-secondary mb-0">
+            Current members assigned to this team.
+          </p>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for user in members %}
+            <tr>
+              <td>{{ user.email }}</td>
+              <td>{{ role_display_names.get(user.role.value, user.role.value) }}</td>
+              <td>
+                {% if user.is_active %}
+                <span class="badge text-bg-success">active</span>
+                {% else %}
+                <span class="badge text-bg-secondary">inactive</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="3" class="text-center text-muted py-4">
+                No members in this team yet.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

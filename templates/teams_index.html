@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Teams</h1>
+  <button
+    class="btn btn-sm btn-primary"
+    type="button"
+    data-bs-toggle="collapse"
+    data-bs-target="#new-team-form"
+    aria-expanded="false"
+    aria-controls="new-team-form"
+  >
+    New team
+  </button>
+</div>
+
+<div class="collapse mb-3" id="new-team-form">
+  <div class="card card-body bg-dark border-secondary">
+    <form method="post" action="{{ url_for('create_team') }}">
+      <div class="mb-2">
+        <label for="team-name" class="form-label small">Team name</label>
+        <input
+          type="text"
+          class="form-control form-control-sm"
+          id="team-name"
+          name="name"
+          required
+        />
+      </div>
+      <button type="submit" class="btn btn-sm btn-success">Create</button>
+    </form>
+  </div>
+</div>
+
+<table class="table table-sm align-middle">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Members</th>
+      <th>Active</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for team in teams %}
+    <tr>
+      <td>{{ team.name }}</td>
+      <td>{{ team.users | length }}</td>
+      <td>
+        {% if team.is_active %}
+        <span class="badge text-bg-success">active</span>
+        {% else %}
+        <span class="badge text-bg-secondary">inactive</span>
+        {% endif %}
+      </td>
+      <td class="text-end">
+        <a
+          href="{{ url_for('team_settings', team_id=team.id) }}"
+          class="btn btn-sm btn-outline-primary"
+        >
+          Settings
+        </a>
+      </td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="4" class="text-center text-muted py-4">
+        No teams yet.
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

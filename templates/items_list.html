@@ -1,0 +1,521 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+  .items-preview-col {
+    width: 132px;
+  }
+
+  .item-preview-link {
+    display: inline-flex;
+    text-decoration: none;
+  }
+
+  .item-preview-frame {
+    position: relative;
+    width: 112px;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.6rem;
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+      #101418;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .item-preview-media {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #101418;
+  }
+
+  .item-preview-badge {
+    position: absolute;
+    right: 0.4rem;
+    bottom: 0.4rem;
+    padding: 0.15rem 0.35rem;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.68);
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .item-filename-link {
+    display: inline-block;
+    max-width: 100%;
+  }
+
+  .storage-budget-card {
+    background:
+      linear-gradient(135deg, rgba(13, 110, 253, 0.14), rgba(255, 255, 255, 0.02)),
+      #11161b;
+  }
+
+  .storage-budget-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .storage-budget-metric {
+    padding: 0.75rem 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .storage-budget-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .storage-budget-value {
+    margin-top: 0.2rem;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set status_filter_value = status_filter.value if status_filter else none %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <a
+      href="{{ url_for('projects_index') }}"
+      class="text-decoration-none small text-muted"
+      >&larr; Projects</a
+    >
+    <h1 class="h4 mb-0 mt-1">{{ project.name }}</h1>
+  </div>
+  <div class="text-end">
+    <div class="mb-2 d-flex justify-content-end gap-2">
+      {% if current_user.role.value in ["project_admin", "system_admin"] %}
+      <a
+        href="{{ url_for('project_settings', project_id=project.id) }}"
+        class="btn btn-sm btn-outline-secondary"
+      >
+        Project settings
+      </a>
+      {% endif %}
+
+      <div class="btn-group btn-group-sm" role="group">
+        <button
+          type="button"
+          class="btn btn-outline-success dropdown-toggle"
+          data-bs-toggle="dropdown"
+          aria-expanded="false"
+        >
+          Export
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
+          <li>
+            <a
+              class="dropdown-item"
+              href="/api/export/project/{{ project.id }}?format=csv"
+              hx-boost="false"
+              download="label_forge_project_{{ project.id }}.csv"
+              >CSV</a
+            >
+          </li>
+          <li>
+            <a
+              class="dropdown-item"
+              href="/api/export/project/{{ project.id }}?format=json"
+              hx-boost="false"
+              download="label_forge_project_{{ project.id }}_annotations.json"
+              >Annotations JSON</a
+            >
+          </li>
+          <li>
+            <a
+              class="dropdown-item"
+              href="/api/export/project/{{ project.id }}?format=yolo"
+              hx-boost="false"
+              download="label_forge_project_{{ project.id }}_yolo.zip"
+              >YOLO / YOLO-seg ZIP (images only)</a
+            >
+          </li>
+          <li>
+            <a
+              class="dropdown-item"
+              href="/api/export/project/{{ project.id }}?format=lf_project"
+              hx-boost="false"
+              download="label_forge_project_{{ project.id }}_lf_project.json"
+              >Label-Forge JSON</a
+            >
+          </li>
+          <li><hr class="dropdown-divider" /></li>
+          <li>
+            <a
+              class="dropdown-item"
+              href="/api/export/project/{{ project.id }}?format=lf_video_tracks"
+              hx-boost="false"
+              download="label_forge_project_{{ project.id }}_video_tracks.json"
+              >LF video tracks JSON</a
+            >
+          </li>
+          <li>
+            <a
+              class="dropdown-item"
+              href="/api/export/project/{{ project.id }}?format=original_media"
+              hx-boost="false"
+              download="label_forge_project_{{ project.id }}_original_media.zip"
+              >Original media ZIP</a
+            >
+          </li>
+        </ul>
+      </div>
+    </div>
+    {% if progress is not none %}
+    <div class="small text-muted mb-1">
+      Progress: {{ '%.1f'|format(progress) }}%
+    </div>
+    {% endif %}
+    <div class="btn-group btn-group-sm" role="group">
+      <a
+        href="{{ url_for('project_items', project_id=project.id) }}"
+        class="btn {% if not status_filter_value %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        >All</a
+      >
+      <a
+        href="{{ url_for('project_items', project_id=project.id) }}?status=unlabeled"
+        class="btn {% if status_filter_value == 'unlabeled' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        >Unlabeled</a
+      >
+      <a
+        href="{{ url_for('project_items', project_id=project.id) }}?status=in_progress"
+        class="btn {% if status_filter_value == 'in_progress' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        >In progress</a
+      >
+      <a
+        href="{{ url_for('project_items', project_id=project.id) }}?status=needs_review"
+        class="btn {% if status_filter_value == 'needs_review' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        >Needs review</a
+      >
+      <a
+        href="{{ url_for('project_items', project_id=project.id) }}?status=done"
+        class="btn {% if status_filter_value == 'done' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+        >Done</a
+      >
+    </div>
+  </div>
+</div>
+
+{% if storage_budget and storage_budget.enabled %}
+<div class="mb-3">
+  <div class="card border-secondary storage-budget-card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <div class="small text-uppercase text-secondary">Converted Video Storage</div>
+          <h2 class="h6 mb-1 mt-1">
+            {{ storage_budget.used_label }}
+            {% if storage_budget.budget_bytes is not none %}
+            / {{ storage_budget.budget_label }}
+            {% endif %}
+          </h2>
+          <div class="small text-secondary">
+            {{ storage_budget.policy_message }}
+          </div>
+        </div>
+        <div class="text-end small">
+          <div class="text-secondary">Host free space</div>
+          <div class="fw-semibold">{{ storage_budget.filesystem_free_label }}</div>
+          {% if storage_budget.over_budget_bytes %}
+          <div class="text-danger mt-1">
+            Over budget by {{ storage_budget.over_budget_label }}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if storage_budget.budget_bytes is not none %}
+      <div class="progress mb-3" role="progressbar" aria-label="Converted video storage usage" aria-valuenow="{{ storage_budget.usage_percent or 0 }}" aria-valuemin="0" aria-valuemax="100">
+        <div
+          class="progress-bar {% if storage_budget.over_budget_bytes %}bg-danger{% elif (storage_budget.usage_percent or 0) >= 85 %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}"
+          style="width: {{ storage_budget.usage_percent or 0 }}%;"
+        >
+          {{ '%.1f'|format(storage_budget.usage_percent or 0) }}%
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="storage-budget-metrics">
+        <div class="storage-budget-metric">
+          <div class="storage-budget-label">Configured budget</div>
+          <div class="storage-budget-value">{{ storage_budget.budget_label }}</div>
+        </div>
+        <div class="storage-budget-metric">
+          <div class="storage-budget-label">Host total capacity</div>
+          <div class="storage-budget-value">{{ storage_budget.filesystem_total_label }}</div>
+        </div>
+        <div class="storage-budget-metric">
+          <div class="storage-budget-label">Available within budget</div>
+          <div class="storage-budget-value">{{ storage_budget.available_budget_label }}</div>
+        </div>
+        <div class="storage-budget-metric">
+          <div class="storage-budget-label">Stored conversions</div>
+          <div class="storage-budget-value">{{ storage_budget.proxy_file_count }}</div>
+        </div>
+        <div class="storage-budget-metric">
+          <div class="storage-budget-label">Idle past TTL</div>
+          <div class="storage-budget-value">
+            {{ storage_budget.stale_proxy_count }}
+            {% if storage_budget.ttl_days is not none %}
+            <span class="small text-secondary">({{ storage_budget.ttl_days }}d)</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="small text-secondary mt-3">
+        Converted videos removed by TTL or LRU are recreated automatically the next time someone opens that item for labeling or review.
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if current_user.role.value in ["project_admin", "system_admin"] %}
+<div class="mb-3">
+  <div class="card bg-dark border-secondary">
+    <div class="card-body py-2">
+      <div
+        id="upload-dropzone"
+        class="upload-dropzone mb-2"
+      >
+        <div class="small">
+          Drag &amp; drop image/video files here, or click to select files.
+        </div>
+        <div class="small text-secondary">
+          You can upload multiple files at once. Files with an existing filename in this project will be rejected.
+        </div>
+        <div class="small text-secondary">
+          Frame-accurate video labeling currently accepts constant-frame-rate (CFR) videos.
+        </div>
+      </div>
+      <form
+        id="upload-form"
+        method="post"
+        action="{{ url_for('upload_item', project_id=project.id) }}"
+        enctype="multipart/form-data"
+        class="d-flex align-items-center gap-2"
+        hx-boost="false"
+      >
+        <input
+          type="file"
+          id="file-input"
+          name="file"
+          accept="image/*,video/*"
+          multiple
+          class="form-control form-control-sm"
+        />
+        <button type="submit" class="btn btn-sm btn-outline-success">
+          Upload
+        </button>
+      </form>
+      <div
+        id="upload-status-list"
+        class="upload-status-list mt-2 small text-muted"
+      ></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<table class="table table-sm align-middle">
+  <thead>
+    <tr>
+      <th style="width: 5%">ID</th>
+      <th class="items-preview-col">Preview</th>
+      <th style="width: 10%">Kind</th>
+      <th>File</th>
+      <th style="width: 14%">Size</th>
+      <th style="width: 12%">Status</th>
+      <th style="width: 18%"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td>{{ item.id }}</td>
+      <td>
+        <a
+          href="{{ url_for('label_item', item_id=item.id) }}"
+          class="item-preview-link"
+          hx-boost="false"
+          aria-label="Open {{ item.display_name }}"
+        >
+          <div class="item-preview-frame">
+            {% if item.kind.value == "image" %}
+            <img
+              src="{{ url_for('item_media', item_id=item.id, variant='original') }}"
+              alt="{{ item.display_name }}"
+              class="item-preview-media"
+              loading="lazy"
+              decoding="async"
+            />
+            {% else %}
+            <video
+              class="item-preview-media"
+              muted
+              playsinline
+              preload="none"
+              data-preview-video
+              data-src="{{ url_for('item_media', item_id=item.id, variant='original') }}"
+              aria-label="{{ item.display_name }}"
+            ></video>
+            <span class="item-preview-badge">Video</span>
+            {% endif %}
+          </div>
+        </a>
+      </td>
+      <td>{{ item.kind.value }}</td>
+      <td class="small text-truncate" style="max-width: 280px">
+        <a
+          href="{{ url_for('label_item', item_id=item.id) }}"
+          class="text-decoration-none item-filename-link w-100 text-truncate"
+          hx-boost="false"
+          title="{{ item.display_name }}"
+        >
+          {{ item.display_name }}
+        </a>
+      </td>
+      <td>
+        <div>{{ item.w }} × {{ item.h }}</div>
+        {% if item.kind.value == "video" %}
+        <div class="small text-muted">
+          {% if item.fps %}{{ '%.2f'|format(item.fps) }} fps{% endif %}
+          {% if item.duration_sec %}
+            {% if item.fps %} · {% endif %}
+            {{ '%.2f'|format(item.duration_sec) }}s
+          {% endif %}
+        </div>
+        {% endif %}
+      </td>
+      <td>
+        <span class="badge text-bg-secondary">{{ item.status.value }}</span>
+      </td>
+      <td class="text-end">
+        <a
+          href="{{ url_for('label_item', item_id=item.id) }}"
+          class="btn btn-sm btn-outline-primary me-1"
+          hx-boost="false"
+          >{% if current_user.role.value == "reviewer" %}View{% else %}Label{% endif %}</a
+        >
+        {% if item.status.value != "unlabeled" %}
+        <a
+          href="{{ url_for('review_item', item_id=item.id) }}"
+          class="btn btn-sm btn-outline-warning me-1"
+          hx-boost="false"
+          >Review</a
+        >
+        {% endif %}
+        {% if current_user.role.value in ["project_admin", "system_admin"] %}
+        <form
+          method="post"
+          action="{{ url_for('delete_item', project_id=project.id, item_id=item.id) }}"
+          class="d-inline"
+        >
+          <button
+            type="submit"
+            class="btn btn-sm btn-outline-danger"
+            onclick="return confirm('Delete this item and its annotations?');"
+          >
+            Delete
+          </button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="7" class="text-center text-muted py-4">
+        No items in this project.
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+{% block extra_js %}
+{% if current_user.role.value in ["project_admin", "system_admin"] %}
+<script type="module" src="{{ url_for('static', path='js/upload.js') }}"></script>
+<script>
+  window.LABEL_FORGE_UPLOAD_CONFIG = {
+    projectId: {{ project.id }},
+    uploadUrl: "{{ url_for('upload_item', project_id=project.id) }}"
+  };
+</script>
+{% endif %}
+<script>
+  (() => {
+    const previewVideos = document.querySelectorAll("[data-preview-video]");
+    if (!previewVideos.length) {
+      return;
+    }
+
+    const activatePreview = (video) => {
+      if (video.dataset.previewReady === "true") {
+        return;
+      }
+      video.dataset.previewReady = "true";
+
+      video.addEventListener(
+        "loadedmetadata",
+        () => {
+          const duration = Number.isFinite(video.duration) ? video.duration : 0;
+          const previewTime = duration > 0 ? Math.min(0.05, duration / 2) : 0.05;
+          try {
+            video.currentTime = previewTime;
+          } catch (_error) {
+            video.pause();
+          }
+        },
+        { once: true }
+      );
+
+      video.addEventListener(
+        "seeked",
+        () => {
+          video.pause();
+        },
+        { once: true }
+      );
+
+      video.src = video.dataset.src;
+      video.load();
+    };
+
+    if (!("IntersectionObserver" in window)) {
+      previewVideos.forEach(activatePreview);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            return;
+          }
+          activatePreview(entry.target);
+          observer.unobserve(entry.target);
+        });
+      },
+      { rootMargin: "200px 0px" }
+    );
+
+    previewVideos.forEach((video) => observer.observe(video));
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="my-page">
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-2 mb-4">
+    <div>
+      <div class="small text-uppercase text-secondary fw-semibold mb-1">Account</div>
+      <h1 class="h4 mb-1">My Page</h1>
+      <p class="text-secondary mb-0">
+        Update your display name, department, and password here.
+      </p>
+    </div>
+    <div class="small text-secondary text-lg-end">
+      <div>{{ role_label }}</div>
+      <div>
+        {% if current_user.team %}
+        {{ current_user.team.name }}
+        {% else %}
+        No team assigned
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-xl-7">
+      <div class="card bg-dark border-secondary shadow-sm h-100">
+        <div class="card-body">
+          <div class="mb-3">
+            <h2 class="h6 mb-1">Profile</h2>
+            <p class="small text-secondary mb-0">
+              Your login email is fixed, but your name and department can be updated anytime.
+            </p>
+          </div>
+
+          {% if profile_success %}
+          <div class="alert alert-success py-2" role="alert">
+            {{ profile_success }}
+          </div>
+          {% endif %}
+          {% if profile_error %}
+          <div class="alert alert-danger py-2" role="alert">
+            {{ profile_error }}
+          </div>
+          {% endif %}
+
+          <form method="post" action="{{ url_for('update_my_page_profile') }}" class="row g-3">
+            <div class="col-12">
+              <label class="form-label small" for="profile-email">Email</label>
+              <input
+                type="email"
+                class="form-control"
+                id="profile-email"
+                value="{{ current_user.email }}"
+                readonly
+                disabled
+              />
+              <div class="form-text small">
+                Email is used as your login ID and cannot be changed from this page.
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label small" for="profile-name">Name</label>
+              <input
+                type="text"
+                class="form-control"
+                id="profile-name"
+                name="name"
+                value="{{ profile_name_value }}"
+                maxlength="255"
+                placeholder="Your name"
+              />
+            </div>
+            <div class="col-12">
+              <label class="form-label small" for="profile-department">Department</label>
+              <input
+                type="text"
+                class="form-control"
+                id="profile-department"
+                name="department"
+                value="{{ profile_department_value }}"
+                maxlength="255"
+                placeholder="Example: Operations"
+              />
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary">
+                Save profile
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xl-5">
+      <div class="card bg-dark border-secondary shadow-sm h-100">
+        <div class="card-body">
+          <div class="mb-3">
+            <h2 class="h6 mb-1">Password</h2>
+            <p class="small text-secondary mb-0">
+              Enter your current password to set a new one.
+            </p>
+          </div>
+
+          {% if password_success %}
+          <div class="alert alert-success py-2" role="alert">
+            {{ password_success }}
+          </div>
+          {% endif %}
+          {% if password_error %}
+          <div class="alert alert-danger py-2" role="alert">
+            {{ password_error }}
+          </div>
+          {% endif %}
+
+          <form method="post" action="{{ url_for('update_my_page_password') }}" class="row g-3">
+            <div class="col-12">
+              <label class="form-label small" for="current-password">Current password</label>
+              <input
+                type="password"
+                class="form-control"
+                id="current-password"
+                name="current_password"
+                required
+              />
+            </div>
+            <div class="col-12">
+              <label class="form-label small" for="new-password">New password</label>
+              <input
+                type="password"
+                class="form-control"
+                id="new-password"
+                name="new_password"
+                required
+              />
+            </div>
+            <div class="col-12">
+              <label class="form-label small" for="confirm-password">Confirm new password</label>
+              <input
+                type="password"
+                class="form-control"
+                id="confirm-password"
+                name="confirm_password"
+                required
+              />
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-warning">
+                Change password
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

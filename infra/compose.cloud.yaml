@@ -1,0 +1,17 @@
+services:
+  api:
+    build:
+      args:
+        LF_DOCKER_REQUIREMENTS_FILE: ${LF_DOCKER_REQUIREMENTS_FILE:-requirements/cpu.txt}
+    environment:
+      SAM2_ENABLED: ${SAM2_ENABLED:-0}
+      SAM2_DEVICE: ${SAM2_DEVICE:-cpu}
+      SAM2_REQUIRE_GPU: ${SAM2_REQUIRE_GPU:-0}
+    restart: unless-stopped
+    volumes:
+      - cloud_uploads:/app/static/uploads
+  db:
+    restart: unless-stopped
+
+volumes:
+  cloud_uploads:

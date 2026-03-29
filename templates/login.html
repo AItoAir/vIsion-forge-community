@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-4">
+    <h1 class="h4 mb-3">Sign in</h1>
+    {% if show_default_admin_hint %}
+    <div class="alert alert-info py-2 small">
+      Repository default admin for local evaluation only:
+      <code>{{ default_admin_email }}</code> /
+      <code>{{ default_admin_password }}</code>.
+      Change or disable <code>BOOTSTRAP_DEFAULT_ADMIN_*</code> before sharing this instance.
+    </div>
+    {% elif not bootstrap_admin_configured %}
+    <div class="alert alert-warning py-2 small">
+      This instance does not ship with a built-in default email or password.
+      Use an existing account, or on a fresh install temporarily set
+      <code>BOOTSTRAP_DEFAULT_ADMIN_ENABLED=1</code>,
+      <code>BOOTSTRAP_DEFAULT_ADMIN_EMAIL</code>, and
+      <code>BOOTSTRAP_DEFAULT_ADMIN_PASSWORD</code> in <code>.env</code>, choose unique values, and restart the app.
+    </div>
+    {% endif %}
+    {% if error %}
+    <div class="alert alert-danger py-2">{{ error }}</div>
+    {% endif %}
+    <form
+      method="post"
+      action="{{ url_for('login') }}"
+      class="card card-body bg-dark border-secondary"
+      hx-boost="false"
+    >
+      <div class="mb-3">
+        <label for="email" class="form-label">Email</label>
+        <input
+          type="email"
+          class="form-control"
+          id="email"
+          name="email"
+          value="{{ email or '' }}"
+          required
+        />
+      </div>
+      <div class="mb-3">
+        <label for="password" class="form-label">Password</label>
+        <input
+          type="password"
+          class="form-control"
+          id="password"
+          name="password"
+          required
+        />
+      </div>
+      <input type="hidden" name="next_url" value="{{ next }}" />
+      <button type="submit" class="btn btn-primary w-100">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

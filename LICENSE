@@ -1,0 +1,43 @@
+Label-Forge Community Edition License Parameters
+===============================================
+
+The first-party Community Edition material in this repository is licensed under
+Business Source License 1.1 with the project-specific parameters below. The
+full, unmodified official Business Source License 1.1 text is provided in the
+companion file `LICENSE.BSL-1.1`, and this file and `LICENSE.BSL-1.1` together
+form the Community Edition license package for this repository.
+
+Project-specific parameters
+---------------------------
+Licensor:
+AItoAir, Inc.
+
+Licensed Work:
+All first-party Community Edition source code, templates, static assets, and
+project-authored documentation in this repository, excluding any file,
+directory, asset, dependency, model, checkpoint, font, dataset, or notice that
+is explicitly covered by a separate upstream or third-party license.
+
+Additional Use Grant:
+- Non-production use is permitted.
+- Production use is permitted for one organization, one deployment, and up to
+  three named users.
+- OEM, embedding, redistribution, white-labeling, sublicensing, and managed or
+  hosted service use for third parties are not included in this Additional Use
+  Grant.
+- Any use outside the Additional Use Grant requires a separate commercial or
+  enterprise license from the Licensor.
+
+Change Date:
+Four years after the first public release date of each tagged version.
+
+Change License:
+AGPL-3.0-or-later
+
+Boundary rules
+--------------
+- This license package applies only to first-party Community Edition material.
+- Third-party software, third-party assets, model weights, checkpoints, fonts,
+  and other upstream material keep their own original licenses.
+- Customer input data and exported annotation outputs are not relicensed by
+  this license package.

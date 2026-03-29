@@ -1,0 +1,32 @@
+services:
+  db:
+    ports:
+      - "${LF_DATABASE_HOST_PORT:-5432}:5432"
+
+  api:
+    build:
+      args:
+        LF_DOCKER_REQUIREMENTS_FILE: ${LF_DOCKER_REQUIREMENTS_FILE:-requirements/gpu.txt}
+    environment:
+      SAM2_ENABLED: ${SAM2_ENABLED:-1}
+      SAM2_DEVICE: ${SAM2_DEVICE:-cuda}
+      SAM2_REQUIRE_GPU: ${SAM2_REQUIRE_GPU:-1}
+    gpus: all
+    volumes:
+      - ../app:/app/app
+      - ../static:/app/static
+      - ../templates:/app/templates
+      - ../models:/app/models:ro
+      - ../alembic:/app/alembic
+      - ../alembic.ini:/app/alembic.ini:ro
+      - ../requirements:/app/requirements:ro
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]

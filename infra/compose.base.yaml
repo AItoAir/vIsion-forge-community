@@ -1,0 +1,72 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${LF_DATABASE_NAME:-label_forge}
+      POSTGRES_USER: ${LF_DATABASE_USER:-label_forge}
+      POSTGRES_PASSWORD: ${LF_DATABASE_PASSWORD:-secret}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${LF_DATABASE_USER:-label_forge} -d ${LF_DATABASE_NAME:-label_forge}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ..
+      args:
+        LF_DOCKER_REQUIREMENTS_FILE: ${LF_DOCKER_REQUIREMENTS_FILE:-requirements/cpu.txt}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENV: ${ENV:-dev}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://label_forge:secret@db:5432/label_forge}
+      SECRET_KEY: ${SECRET_KEY:-change_me_dev}
+      PASSWORD_SALT: ${PASSWORD_SALT:-}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-label_forge_session}
+      SESSION_COOKIE_HTTPS_ONLY: ${SESSION_COOKIE_HTTPS_ONLY:-0}
+      SESSION_COOKIE_SAME_SITE: ${SESSION_COOKIE_SAME_SITE:-lax}
+      SESSION_COOKIE_MAX_AGE_SECONDS: ${SESSION_COOKIE_MAX_AGE_SECONDS:-1209600}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-0}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-127.0.0.1}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
+      APP_EXTENSION_HOOKS: ${APP_EXTENSION_HOOKS:-}
+      BOOTSTRAP_DEFAULT_ADMIN_ENABLED: ${BOOTSTRAP_DEFAULT_ADMIN_ENABLED:-0}
+      BOOTSTRAP_DEFAULT_ADMIN_EMAIL: ${BOOTSTRAP_DEFAULT_ADMIN_EMAIL:-}
+      BOOTSTRAP_DEFAULT_ADMIN_PASSWORD: ${BOOTSTRAP_DEFAULT_ADMIN_PASSWORD:-}
+      SAM2_ENABLED: ${SAM2_ENABLED:-0}
+      SAM2_MODEL_CFG: ${SAM2_MODEL_CFG:-configs/sam2.1/sam2.1_hiera_l.yaml}
+      SAM2_CHECKPOINT: ${SAM2_CHECKPOINT:-/app/models/sam2.1_hiera_large.pt}
+      SAM2_DEVICE: ${SAM2_DEVICE:-cpu}
+      SAM2_REQUIRE_GPU: ${SAM2_REQUIRE_GPU:-0}
+      SAM2_OFFLOAD_VIDEO_TO_CPU: ${SAM2_OFFLOAD_VIDEO_TO_CPU:-0}
+      SAM2_OFFLOAD_STATE_TO_CPU: ${SAM2_OFFLOAD_STATE_TO_CPU:-0}
+      SAM2_ASYNC_LOADING_FRAMES: ${SAM2_ASYNC_LOADING_FRAMES:-0}
+      SAM2_APPLY_POSTPROCESSING: ${SAM2_APPLY_POSTPROCESSING:-1}
+      SAM2_VOS_OPTIMIZED: ${SAM2_VOS_OPTIMIZED:-0}
+      SAM2_CACHE_DIR: ${SAM2_CACHE_DIR:-/tmp/label_forge_sam2}
+      SAM2_POLYGON_EPSILON: ${SAM2_POLYGON_EPSILON:-0.003}
+      SAM2_VIDEO_CHUNK_SIZE: ${SAM2_VIDEO_CHUNK_SIZE:-240}
+      SAM2_VIDEO_CHUNK_OVERLAP: ${SAM2_VIDEO_CHUNK_OVERLAP:-32}
+      SAM2_VIDEO_CHUNK_THRESHOLD_FRAMES: ${SAM2_VIDEO_CHUNK_THRESHOLD_FRAMES:-320}
+    ports:
+      - "${LF_PUBLIC_PORT:-8001}:8000"
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+      ]
+
+volumes:
+  pgdata:

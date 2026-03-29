@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+  .project-label-class-settings {
+    --label-settings-grid:
+      minmax(10rem, 1.7fr)
+      minmax(9rem, 1.35fr)
+      minmax(5rem, 0.7fr)
+      minmax(6rem, 0.8fr)
+      minmax(5.5rem, 0.75fr)
+      minmax(5.5rem, 0.75fr)
+      minmax(6.5rem, 0.9fr)
+      minmax(8.5rem, 1fr)
+      minmax(6rem, 0.85fr)
+      minmax(5rem, 0.8fr);
+  }
+
+  .project-label-class-create-grid {
+    display: grid;
+    gap: 0.75rem;
+    align-items: end;
+    grid-template-columns: var(--label-settings-grid);
+  }
+
+  .project-label-class-create-note {
+    grid-column: 1 / -1;
+  }
+
+  .project-label-class-create-action {
+    justify-self: end;
+  }
+
+  .project-label-class-table-shell {
+    overflow-x: auto;
+  }
+
+  .project-label-class-table-head,
+  .project-label-class-table-row,
+  .project-label-class-table-empty {
+    min-width: 74rem;
+  }
+
+  .project-label-class-table-head,
+  .project-label-class-table-row {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: var(--label-settings-grid);
+  }
+
+  .project-label-class-table-head {
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+  }
+
+  .project-label-class-table-row {
+    align-items: center;
+    padding: 0.85rem;
+  }
+
+  .project-label-class-table-row + .project-label-class-table-row {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .project-label-class-table-head > div,
+  .project-label-class-table-row > div,
+  .project-label-class-create-grid > div {
+    min-width: 0;
+  }
+
+  .project-label-class-color .form-control-color {
+    width: 100%;
+    min-width: 4.25rem;
+  }
+
+  .project-label-class-checkbox .form-check {
+    display: flex;
+    align-items: center;
+    min-height: 2.25rem;
+    margin-bottom: 0;
+  }
+
+  .project-label-class-checkbox .form-check-input {
+    margin-top: 0;
+  }
+
+  .project-label-class-bbox-only.is-disabled {
+    opacity: 0.55;
+  }
+
+  .project-label-class-bbox-only.is-disabled .form-check-label {
+    color: var(--bs-secondary-color);
+  }
+
+  .project-label-class-table-empty {
+    padding: 1rem;
+  }
+
+  @media (max-width: 1199.98px) {
+    .project-label-class-create-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .project-label-class-create-action,
+    .project-label-class-create-note {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 767.98px) {
+    .project-label-class-create-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a
+    href="{{ url_for('project_items', project_id=project.id) }}"
+    class="text-decoration-none small text-muted"
+    >&larr; {{ project.name }}</a
+  >
+</div>
+
+<h1 class="h5 mb-3">Project settings</h1>
+
+<div class="card bg-dark border-secondary mb-3">
+  <div class="card-body">
+    <h2 class="small text-uppercase text-secondary mb-2">Project</h2>
+    <form
+      method="post"
+      action="{{ url_for('update_project', project_id=project.id) }}"
+      class="row g-2"
+    >
+      <div class="col-md-6">
+        <label class="form-label small" for="project-name">Project name</label>
+        <input
+          type="text"
+          class="form-control form-control-sm"
+          id="project-name"
+          name="name"
+          value="{{ project.name }}"
+          required
+        />
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small" for="project-description">Description</label>
+        <input
+          type="text"
+          class="form-control form-control-sm"
+          id="project-description"
+          name="description"
+          value="{{ project.description or '' }}"
+        />
+      </div>
+      <div class="col-12 text-end">
+        <button type="submit" class="btn btn-sm btn-primary">Save project</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<h2 class="h6 mb-2">Label classes</h2>
+
+<div class="project-label-class-settings">
+  <div class="card bg-dark border-secondary mb-3">
+    <div class="card-body">
+      <h3 class="small text-uppercase text-secondary mb-2">New label class</h3>
+      <form
+        method="post"
+        action="{{ url_for('create_label_class', project_id=project.id) }}"
+        class="project-label-class-create-grid"
+        data-label-class-editor
+      >
+        <div>
+          <label class="form-label small" for="new-label-name">Name</label>
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            id="new-label-name"
+            name="name"
+            required
+          />
+        </div>
+        <div>
+          <label class="form-label small" for="new-geometry-kind">Geometry</label>
+          <select
+            class="form-select form-select-sm"
+            id="new-geometry-kind"
+            name="geometry_kind"
+            data-geometry-select
+          >
+            <option value="bbox" selected>BBox</option>
+            <option value="polygon">Polygon</option>
+            <option value="tag">Tag (image/frame)</option>
+          </select>
+        </div>
+        <div class="project-label-class-color">
+          <label class="form-label small" for="new-color-hex">Color</label>
+          <input
+            type="color"
+            class="form-control form-control-sm form-control-color"
+            id="new-color-hex"
+            name="color_hex"
+            value="{{ new_label_color }}"
+          />
+        </div>
+        <div>
+          <label class="form-label small" for="new-shortcut-key"
+            >Shortcut key</label
+          >
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            id="new-shortcut-key"
+            name="shortcut_key"
+            maxlength="1"
+            placeholder="1-9"
+          />
+        </div>
+        <div class="project-label-class-bbox-only" data-bbox-only>
+          <label class="form-label small" for="new-default-box-w">Default box W</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            class="form-control form-control-sm"
+            id="new-default-box-w"
+            name="default_box_w"
+            value="64"
+          />
+        </div>
+        <div class="project-label-class-bbox-only" data-bbox-only>
+          <label class="form-label small" for="new-default-box-h">Default box H</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            class="form-control form-control-sm"
+            id="new-default-box-h"
+            name="default_box_h"
+            value="64"
+          />
+        </div>
+        <div>
+          <label class="form-label small" for="new-default-propagation-frames">Default propagation</label>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            class="form-control form-control-sm"
+            id="new-default-propagation-frames"
+            name="default_propagation_frames"
+            value="0"
+          />
+        </div>
+        <div
+          class="project-label-class-checkbox project-label-class-bbox-only"
+          data-bbox-only
+        >
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="new-default-use-fixed-box"
+              name="default_use_fixed_box"
+            />
+            <label class="form-check-label small" for="new-default-use-fixed-box">
+              Use fixed bbox
+            </label>
+          </div>
+        </div>
+        <div class="project-label-class-create-action">
+          <button type="submit" class="btn btn-sm btn-success">
+            Add
+          </button>
+        </div>
+        <div class="project-label-class-create-note">
+          <div class="form-text small">
+            These presets are applied when annotators switch to this label class on the labeling screen.
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div>
+    <h3 class="small text-uppercase text-secondary mb-2">Existing labels</h3>
+
+    <div class="border rounded project-label-class-table-shell">
+      <div class="project-label-class-table-head">
+        <div>Name</div>
+        <div>Geometry</div>
+        <div>Color</div>
+        <div>Shortcut</div>
+        <div>Box W</div>
+        <div>Box H</div>
+        <div>Propagation</div>
+        <div>Fixed bbox</div>
+        <div>Active</div>
+        <div>Save</div>
+      </div>
+
+      {% for lc in label_classes %}
+      <form
+        method="post"
+        action="{{ url_for('update_label_class', project_id=project.id, label_id=lc.id) }}"
+        class="project-label-class-table-row"
+        data-label-class-editor
+      >
+        <div>
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            name="name"
+            value="{{ lc.name }}"
+            required
+          />
+        </div>
+
+        <div>
+          <select
+            class="form-select form-select-sm"
+            name="geometry_kind"
+            data-geometry-select
+          >
+            <option
+              value="bbox"
+              {% if lc.geometry_kind.value == "bbox" %}selected{% endif %}
+            >
+              BBox
+            </option>
+            <option
+              value="polygon"
+              {% if lc.geometry_kind.value == "polygon" %}selected{% endif %}
+            >
+              Polygon
+            </option>
+            <option
+              value="tag"
+              {% if lc.geometry_kind.value == "tag" %}selected{% endif %}
+            >
+              Tag (image/frame)
+            </option>
+          </select>
+        </div>
+
+        <div class="project-label-class-color">
+          <input
+            type="color"
+            class="form-control form-control-sm form-control-color"
+            name="color_hex"
+            value="{{ lc.color_hex }}"
+          />
+        </div>
+
+        <div>
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            name="shortcut_key"
+            maxlength="1"
+            value="{{ lc.shortcut_key or '' }}"
+          />
+        </div>
+
+        <div class="project-label-class-bbox-only" data-bbox-only>
+          <input
+            type="number"
+            class="form-control form-control-sm"
+            name="default_box_w"
+            min="1"
+            step="1"
+            value="{{ lc.default_box_w or '' }}"
+            placeholder="Box W"
+          />
+        </div>
+
+        <div class="project-label-class-bbox-only" data-bbox-only>
+          <input
+            type="number"
+            class="form-control form-control-sm"
+            name="default_box_h"
+            min="1"
+            step="1"
+            value="{{ lc.default_box_h or '' }}"
+            placeholder="Box H"
+          />
+        </div>
+
+        <div>
+          <input
+            type="number"
+            class="form-control form-control-sm"
+            name="default_propagation_frames"
+            min="0"
+            step="1"
+            value="{{ lc.default_propagation_frames }}"
+            placeholder="Propagation"
+          />
+        </div>
+
+        <div
+          class="project-label-class-checkbox project-label-class-bbox-only"
+          data-bbox-only
+        >
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              name="default_use_fixed_box"
+              id="lc-default-use-fixed-box-{{ lc.id }}"
+              {% if lc.default_use_fixed_box %}checked{% endif %}
+            />
+            <label
+              class="form-check-label small"
+              for="lc-default-use-fixed-box-{{ lc.id }}"
+            >
+              Fixed bbox preset
+            </label>
+          </div>
+        </div>
+
+        <div class="project-label-class-checkbox">
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              name="is_active"
+              id="lc-active-{{ lc.id }}"
+              {% if lc.is_active %}checked{% endif %}
+            />
+            <label
+              class="form-check-label small"
+              for="lc-active-{{ lc.id }}"
+            >
+              Active
+            </label>
+          </div>
+        </div>
+
+        <div class="text-end">
+          <button type="submit" class="btn btn-sm btn-primary w-100">
+            Save
+          </button>
+        </div>
+      </form>
+      {% else %}
+      <div class="project-label-class-table-empty text-center text-muted">
+        No label classes yet.
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (() => {
+    const syncBBoxPresetFields = (container) => {
+      const geometrySelect = container.querySelector("[data-geometry-select]");
+      if (!geometrySelect) {
+        return;
+      }
+
+      const isBBox = geometrySelect.value === "bbox";
+      container.querySelectorAll("[data-bbox-only]").forEach((field) => {
+        field.classList.toggle("is-disabled", !isBBox);
+        field.querySelectorAll("input, select, textarea").forEach((control) => {
+          control.disabled = !isBBox;
+        });
+      });
+    };
+
+    const initLabelClassEditors = (root) => {
+      root.querySelectorAll("[data-label-class-editor]").forEach((container) => {
+        if (container.dataset.bboxPresetInit === "true") {
+          syncBBoxPresetFields(container);
+          return;
+        }
+
+        const geometrySelect = container.querySelector("[data-geometry-select]");
+        if (!geometrySelect) {
+          return;
+        }
+
+        geometrySelect.addEventListener("change", () => {
+          syncBBoxPresetFields(container);
+        });
+        container.dataset.bboxPresetInit = "true";
+        syncBBoxPresetFields(container);
+      });
+    };
+
+    const start = () => initLabelClassEditors(document);
+    if (document.readyState === "loading") {
+      window.addEventListener("DOMContentLoaded", start, { once: true });
+    } else {
+      start();
+    }
+
+    if (!window.__projectSettingsBBoxPresetBound) {
+      window.addEventListener("htmx:load", (event) => {
+        const root = event.target instanceof Element ? event.target : document;
+        initLabelClassEditors(root);
+      });
+      window.__projectSettingsBBoxPresetBound = true;
+    }
+  })();
+</script>
+{% endblock %}
