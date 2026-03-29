@@ -1,4 +1,4 @@
-# Label-Forge Commercial Licensing Overview
+# VisionForge Commercial Licensing Overview
 
 This file is a commercial licensing summary for the public Community Edition
 repository. It is not a substitute for a signed commercial agreement.
@@ -42,7 +42,7 @@ says otherwise:
 
 ## Contact
 
-Commercial licensing inquiries for Label-Forge Community Edition should be sent
+Commercial licensing inquiries for VisionForge Community Edition should be sent
 to:
 
 licensing@aitoair.com
@@ -51,7 +51,7 @@ When contacting AItoAir, Inc. about licensing, include:
 
 - Legal name of the requesting organization
 - Primary contact name, title, and reply email address
-- Intended use of Label-Forge Community Edition
+- Intended use of VisionForge Community Edition
 - Deployment type and scope, including environment count and expected named users
 - Whether OEM, embedding, redistribution, white-label, or third-party hosted
   service rights are needed
@@ -63,7 +63,7 @@ sensitive material in the initial inquiry.
 
 ### Inquiry template
 
-Subject: Label-Forge licensing inquiry - <organization name>
+Subject: VisionForge licensing inquiry - <organization name>
 
 Organization legal name:
 Primary contact name:

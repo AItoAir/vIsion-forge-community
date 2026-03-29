@@ -122,7 +122,7 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=csv"
               hx-boost="false"
-              download="label_forge_project_{{ project.id }}.csv"
+              download="vision_forge_project_{{ project.id }}.csv"
               >CSV</a
             >
           </li>
@@ -131,7 +131,7 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=json"
               hx-boost="false"
-              download="label_forge_project_{{ project.id }}_annotations.json"
+              download="vision_forge_project_{{ project.id }}_annotations.json"
               >Annotations JSON</a
             >
           </li>
@@ -140,7 +140,7 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=yolo"
               hx-boost="false"
-              download="label_forge_project_{{ project.id }}_yolo.zip"
+              download="vision_forge_project_{{ project.id }}_yolo.zip"
               >YOLO / YOLO-seg ZIP (images only)</a
             >
           </li>
@@ -149,8 +149,8 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=lf_project"
               hx-boost="false"
-              download="label_forge_project_{{ project.id }}_lf_project.json"
-              >Label-Forge JSON</a
+              download="vision_forge_project_{{ project.id }}_lf_project.json"
+              >VisionForge JSON</a
             >
           </li>
           <li><hr class="dropdown-divider" /></li>
@@ -159,7 +159,7 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=lf_video_tracks"
               hx-boost="false"
-              download="label_forge_project_{{ project.id }}_video_tracks.json"
+              download="vision_forge_project_{{ project.id }}_video_tracks.json"
               >LF video tracks JSON</a
             >
           </li>
@@ -168,7 +168,7 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=original_media"
               hx-boost="false"
-              download="label_forge_project_{{ project.id }}_original_media.zip"
+              download="vision_forge_project_{{ project.id }}_original_media.zip"
               >Original media ZIP</a
             >
           </li>
@@ -452,10 +452,11 @@
 {% if current_user.role.value in ["project_admin", "system_admin"] %}
 <script type="module" src="{{ url_for('static', path='js/upload.js') }}"></script>
 <script>
-  window.LABEL_FORGE_UPLOAD_CONFIG = {
+  const visionForgeUploadConfig = {
     projectId: {{ project.id }},
     uploadUrl: "{{ url_for('upload_item', project_id=project.id) }}"
   };
+  window.VISION_FORGE_UPLOAD_CONFIG = visionForgeUploadConfig;
 </script>
 {% endif %}
 <script>

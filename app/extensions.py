@@ -12,7 +12,7 @@ from .config import settings
 
 logger = structlog.get_logger(__name__)
 
-DEFAULT_OPTIONAL_EXTENSION_MODULES = ("label_forge_enterprise.app_hooks",)
+DEFAULT_OPTIONAL_EXTENSION_MODULES = ("vision_forge_enterprise.app_hooks",)
 ExtensionHook = Callable[[FastAPI], None]
 
 

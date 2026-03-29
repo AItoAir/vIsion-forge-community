@@ -86,7 +86,7 @@ def _item_media_conversion_payload(
 
 
 def _is_async_upload_request(request: Request) -> bool:
-    return request.headers.get("x-label-forge-upload", "").strip() == "1"
+    return request.headers.get("x-vision-forge-upload", "").strip() == "1"
 
 
 def _get_prev_next_item_ids(db: Session, project_id: int, item: Item) -> tuple[int | None, int | None]:

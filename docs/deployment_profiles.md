@@ -1,6 +1,6 @@
 # Deployment Profiles
 
-Label-Forge Community Edition now groups deployment guidance by runtime profile
+VisionForge Community Edition now groups deployment guidance by runtime profile
 instead of the old `dev / stg / prod` labels.
 
 ## Canonical compose layout
@@ -83,7 +83,7 @@ the base-plus-profile layout above.
 
 1. Copy the matching example env file to `.env`.
 2. Adjust secrets, ports, and database credentials.
-3. Start the stack with `manage_label_forge.(sh|bat) up-build`.
+3. Start the stack with `manage_vision_forge.(sh|bat) up-build`.
 4. Let the management script run `alembic upgrade head`.
 
 The env file is the canonical profile selector. A CLI profile argument only

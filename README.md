@@ -1,10 +1,10 @@
-# Label-Forge Community Edition
+# VisionForge Community Edition
 
 Self-hosted, video-first annotation for edge AI teams.
 
 ## Choose a runtime profile first
 
-Label-Forge Community Edition now ships with three public deployment profiles:
+VisionForge Community Edition now ships with three public deployment profiles:
 
 | Profile | Best for | Default SAM2 mode | Env template |
 | --- | --- | --- | --- |
@@ -12,7 +12,8 @@ Label-Forge Community Edition now ships with three public deployment profiles:
 | `cpu` | Fallback local development profile on a CPU-only machine | disabled | `.env.cpu.example` |
 | `cloud` | Single-host self-hosting | disabled | `.env.cloud.example` |
 
-Windows uses the same flow through `manage_label_forge.bat`.
+Windows uses the same flow through `manage_vision_forge.bat`.
+`restart` ensures the database is running, applies migrations when enabled, and then recreates the API container.
 
 ## Quick start
 
@@ -59,13 +60,13 @@ For HTTPS or reverse-proxy deployments, review:
 ### 3. Start the stack
 
 ```bash
-./manage_label_forge.sh up-build
+./manage_vision_forge.sh up-build
 ```
 
 On Windows:
 
 ```bat
-manage_label_forge.bat up-build
+manage_vision_forge.bat up-build
 ```
 
 The management scripts now:
@@ -85,10 +86,10 @@ The local-development templates (`.env.example`, `.env.gpu.example`,
 `.env.cpu.example`) enable a bootstrap system admin account for local
 evaluation:
 
-- Email: `admin@label-forge.test`
-- Password: `LabelForge123`
+- Email: `admin@visionforge.test`
+- Password: `VisionForge123`
 
-On startup Label-Forge ensures this account exists and resets its password to
+On startup VisionForge ensures this account exists and resets its password to
 the value currently configured in `.env`. The login page only surfaces these
 repository-default credentials for local or loopback access.
 
@@ -183,7 +184,7 @@ Alembic is now the official schema migration path.
 Run migrations directly with:
 
 ```bash
-./manage_label_forge.sh migrate
+./manage_vision_forge.sh migrate
 ```
 
 The app still keeps its runtime schema compatibility checks in `app/main.py` as
@@ -192,7 +193,7 @@ new schema work should go through Alembic revisions.
 
 ## Repository scope
 
-This repository contains the public Community Edition of Label-Forge.
+This repository contains the public Community Edition of VisionForge.
 
 It includes:
 
@@ -217,7 +218,7 @@ Private or enterprise overlays can attach additional middleware, mounts, or
 routers through `APP_EXTENSION_HOOKS`, for example:
 
 ```bash
-APP_EXTENSION_HOOKS=label_forge_enterprise.app_hooks
+APP_EXTENSION_HOOKS=vision_forge_enterprise.app_hooks
 ```
 
 Each configured module should expose `apply_extension_hooks(app)` so the

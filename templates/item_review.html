@@ -580,7 +580,7 @@
 <script type="module" src="{{ url_for('static', path='js/media_conversion_status.js') }}?v=20260328_media_conversion_status"></script>
 {% endif %}
 <script>
-  window.LABEL_FORGE_CONFIG = {
+  const visionForgeConfig = {
     itemId: {{ item.id }},
     apiBase: "/api",
     kind: "{{ item.kind.value }}",
@@ -595,5 +595,6 @@
     readOnly: true,
     mediaConversion: {{ media_conversion | tojson }},
   };
+  window.VISION_FORGE_CONFIG = visionForgeConfig;
 </script>
 {% endblock %}

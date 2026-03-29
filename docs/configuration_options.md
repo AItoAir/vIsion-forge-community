@@ -1,6 +1,6 @@
 # Configuration Options
 
-Label-Forge Community Edition uses the `.env` file as the main configuration
+VisionForge Community Edition uses the `.env` file as the main configuration
 surface.
 
 ## The first decision

@@ -2,7 +2,7 @@
 <html lang="en" data-bs-theme="dark">
   <head>
     <meta charset="utf-8" />
-    <title>Label-Forge</title>
+    <title>VisionForge</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <link
@@ -22,7 +22,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom">
       <div class="container-fluid">
         <a class="navbar-brand fw-bold" href="{{ url_for('projects_index') }}">
-          Label-Forge
+          VisionForge
         </a>
         <div class="d-flex align-items-center ms-auto gap-2">
           {% if request.state.user is defined and request.state.user %}
@@ -63,12 +63,12 @@
     ></script>
     <script src="{{ url_for('static', path='js/bootstrap_fallback.js') }}"></script>
     <script>
-      window.LABEL_FORGE_SECURITY = {
+      window.VISION_FORGE_SECURITY = {
         csrfToken: {{ request.state.csrf_token | tojson }},
       };
 
       (() => {
-        const csrfToken = window.LABEL_FORGE_SECURITY?.csrfToken || null;
+        const csrfToken = window.VISION_FORGE_SECURITY?.csrfToken || null;
         const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
         function isSameOriginUrl(url) {

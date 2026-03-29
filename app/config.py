@@ -3,8 +3,8 @@ from __future__ import annotations
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-DEFAULT_BOOTSTRAP_ADMIN_EMAIL = "admin@label-forge.test"
-DEFAULT_BOOTSTRAP_ADMIN_PASSWORD = "LabelForge123"
+DEFAULT_BOOTSTRAP_ADMIN_EMAIL = "admin@visionforge.test"
+DEFAULT_BOOTSTRAP_ADMIN_PASSWORD = "VisionForge123"
 VALID_SESSION_COOKIE_SAME_SITE_VALUES = {"lax", "strict", "none"}
 
 
@@ -33,10 +33,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     env: str = "dev"
-    database_url: str = "postgresql+psycopg2://label_forge:secret@localhost:5432/label_forge"
+    database_url: str = "postgresql+psycopg2://vision_forge:secret@localhost:5432/vision_forge"
     secret_key: str = "dev-insecure-session-key-change-before-production"
     password_salt: str = ""
-    session_cookie_name: str = "label_forge_session"
+    session_cookie_name: str = "vision_forge_session"
     session_cookie_https_only: bool = False
     session_cookie_same_site: str = "lax"
     session_cookie_max_age_seconds: int = 1209600
@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     sam2_async_loading_frames: bool = False
     sam2_apply_postprocessing: bool = True
     sam2_vos_optimized: bool = False
-    sam2_cache_dir: str = "/tmp/label_forge_sam2"
+    sam2_cache_dir: str = "/tmp/vision_forge_sam2"
     sam2_polygon_epsilon: float = 0.003
     sam2_video_chunk_size: int = 240
     sam2_video_chunk_overlap: int = 32

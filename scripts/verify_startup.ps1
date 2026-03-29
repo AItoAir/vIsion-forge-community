@@ -52,7 +52,7 @@ $RequestedProfile = if ($Profile) {
 $ResolvedProfile = Resolve-Profile -Value $RequestedProfile
 
 $RepoRoot = Split-Path -Path $PSScriptRoot -Parent
-$ManageScript = Join-Path $RepoRoot "manage_label_forge.bat"
+$ManageScript = Join-Path $RepoRoot "manage_vision_forge.bat"
 $CanonicalEnvFile = if ($env:LF_ENV_FILE) { $env:LF_ENV_FILE } else { Join-Path $RepoRoot ".env" }
 $ExampleEnvFile = Join-Path $RepoRoot ".env.$ResolvedProfile.example"
 $FallbackEnvFile = Join-Path $RepoRoot ".env.example"
@@ -71,8 +71,8 @@ $TimeoutSeconds = if ($env:LF_VERIFY_TIMEOUT_SECONDS) {
 $KeepRunning = Test-TruthyString -Value $env:LF_VERIFY_KEEP_RUNNING
 $SkipEnvCopy = Test-TruthyString -Value $env:LF_VERIFY_SKIP_ENV_COPY
 $HealthUrl = "http://127.0.0.1:$Port/healthz"
-$VerificationProjectName = "label-forge-verify-$ResolvedProfile-$PID"
-$VerificationEnvFile = Join-Path ([System.IO.Path]::GetTempPath()) "label-forge-verify-$ResolvedProfile-$PID.env"
+$VerificationProjectName = "vision-forge-verify-$ResolvedProfile-$PID"
+$VerificationEnvFile = Join-Path ([System.IO.Path]::GetTempPath()) "vision-forge-verify-$ResolvedProfile-$PID.env"
 $VerificationPassed = $false
 $ExitCode = 0
 $OriginalSkipDockerPrune = $env:LF_SKIP_DOCKER_PRUNE
@@ -137,7 +137,7 @@ function Invoke-Manage {
     try {
         & $ManageScript @Arguments
         if ($LASTEXITCODE -ne 0) {
-            throw "Command failed with exit code ${LASTEXITCODE}: manage_label_forge.bat $($Arguments -join ' ')"
+            throw "Command failed with exit code ${LASTEXITCODE}: manage_vision_forge.bat $($Arguments -join ' ')"
         }
     }
     finally {
@@ -170,7 +170,7 @@ try {
         $env:LF_SKIP_DOCKER_PRUNE = "1"
     }
 
-    Write-Host "[INFO] Running Label-Forge startup verification..."
+    Write-Host "[INFO] Running VisionForge startup verification..."
     Write-Host "[INFO] Profile: $ResolvedProfile"
     Write-Host "[INFO] Project name: $VerificationProjectName"
     Write-Host "[INFO] Health URL: $HealthUrl"

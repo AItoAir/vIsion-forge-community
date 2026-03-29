@@ -12,7 +12,7 @@ What problem are you trying to solve?
 
 ## Proposed change
 
-What should Label-Forge do differently?
+What should VisionForge do differently?
 
 ## Runtime profile
 

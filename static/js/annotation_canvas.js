@@ -22,7 +22,7 @@ export function bootAnnotationCanvas() {
   const video = document.getElementById("item-video");
   const mediaEl = image || video;
   const canvas = document.getElementById("annotation-canvas");
-  const cfg = window.LABEL_FORGE_CONFIG || {};
+  const cfg = window.VISION_FORGE_CONFIG || {};
   if (!mediaEl || !canvas || !cfg.itemId) return;
   if (canvas.dataset.annotationBooted === "true") return;
 

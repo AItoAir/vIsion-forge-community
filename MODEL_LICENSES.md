@@ -1,6 +1,6 @@
 # Model and Checkpoint Licensing
 
-The Label-Forge Community Edition repository license covers first-party repository
+The VisionForge Community Edition repository license covers first-party repository
 source code only.
 
 Models, checkpoints, weights, fonts, datasets, and other non-code assets are not
@@ -19,7 +19,7 @@ Do not assume that:
 - upstream fonts
 - optional upstream native or helper code
 
-are covered by the Label-Forge Community Edition license.
+are covered by the VisionForge Community Edition license.
 
 ## Customer-provided assets
 

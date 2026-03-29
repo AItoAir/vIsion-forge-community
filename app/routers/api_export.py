@@ -331,7 +331,7 @@ def _build_yolo_zip(
             "README.txt",
             "\n".join(
                 [
-                    f"Label-Forge YOLO export for project {project.id}",
+                    f"VisionForge YOLO export for project {project.id}",
                     "",
                     "- One label file per image item",
                     "- bbox -> YOLO detection line format",
@@ -489,7 +489,7 @@ def _export_lf_video_tracks(
     label_classes: list[LabelClass],
 ) -> list[dict[str, Any]]:
     """
-    Project-wide export in Label-Forge specific lf_video_tracks JSON format.
+    Project-wide export in VisionForge-specific lf_video_tracks JSON format.
 
     - 1 record per video item
     - Each record has: project, item, label_classes, tracks, single_frame_boxes
@@ -859,7 +859,7 @@ def export_project(
             media_type="application/zip",
         )
         response.headers["Content-Disposition"] = (
-            f'attachment; filename="label_forge_project_{project.id}_yolo.zip"'
+            f'attachment; filename="vision_forge_project_{project.id}_yolo.zip"'
         )
     elif format == "lf_video_tracks":
         records = _export_lf_video_tracks(project, items, annotations, label_classes)
@@ -883,7 +883,7 @@ def export_project(
             background=BackgroundTask(archive_file.close),
         )
         response.headers["Content-Disposition"] = (
-            f'attachment; filename="label_forge_project_{project.id}_original_media.zip"'
+            f'attachment; filename="vision_forge_project_{project.id}_original_media.zip"'
         )
     else:
         raise HTTPException(status_code=400, detail="Unsupported format")

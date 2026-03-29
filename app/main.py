@@ -73,7 +73,7 @@ def validate_runtime_security_settings() -> None:
         "dev-insecure-session-key-change-before-production",
     }
     insecure_password_salts = {
-        "label-forge-salt",
+        "vision-forge-salt",
         "dev-insecure-password-salt-change-before-production",
     }
     session_cookie_same_site = normalized_session_cookie_same_site(
@@ -648,7 +648,7 @@ def compact_legacy_video_annotations() -> None:
 
 
 def create_core_app() -> FastAPI:
-    return FastAPI(title="Label-Forge")
+    return FastAPI(title="VisionForge")
 
 
 class RequestGuardMiddleware(BaseHTTPMiddleware):
@@ -811,7 +811,7 @@ def create_app() -> FastAPI:
     def stop_background_workers() -> None:
         sam2_track_job_runner.stop()
 
-    logger.info("Label-Forge app initialized", env=settings.env)
+    logger.info("VisionForge app initialized", env=settings.env)
     return app
 
 

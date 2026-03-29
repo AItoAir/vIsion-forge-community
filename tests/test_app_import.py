@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 class AppImportSmokeTests(unittest.TestCase):
     def test_app_main_imports_with_sqlite(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            db_path = Path(tmp_dir) / "label_forge_validate.db"
+            db_path = Path(tmp_dir) / "vision_forge_validate.db"
             env = os.environ.copy()
             env.update(
                 {

@@ -1,14 +1,14 @@
 # Database Migrations
 
-Label-Forge Community Edition now ships with Alembic as the official migration
+VisionForge Community Edition now ships with Alembic as the official migration
 path.
 
 ## Canonical workflow
 
 Use one of the management scripts:
 
-- `./manage_label_forge.sh migrate`
-- `manage_label_forge.bat migrate`
+- `./manage_vision_forge.sh migrate`
+- `manage_vision_forge.bat migrate`
 
 The scripts run:
 

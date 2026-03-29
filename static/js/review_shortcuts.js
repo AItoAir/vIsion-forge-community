@@ -25,9 +25,10 @@ function bootReviewShortcuts() {
   );
 
   const currentUrl = window.location.pathname + window.location.search;
-  const nextUrl = window.LABEL_FORGE_CONFIG?.nextItemUrl || null;
-  const prevChangedItemUrl = window.LABEL_FORGE_CONFIG?.prevChangedItemUrl || null;
-  const nextChangedItemUrl = window.LABEL_FORGE_CONFIG?.nextChangedItemUrl || null;
+  const cfg = window.VISION_FORGE_CONFIG || {};
+  const nextUrl = cfg.nextItemUrl || null;
+  const prevChangedItemUrl = cfg.prevChangedItemUrl || null;
+  const nextChangedItemUrl = cfg.nextChangedItemUrl || null;
 
   function setRedirectTarget(form, targetUrl) {
     const redirectInput = form?.querySelector('input[name="redirect_to"]');
