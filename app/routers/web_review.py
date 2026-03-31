@@ -22,6 +22,12 @@ from ..models import (
 )
 from ..security import ensure_project_team_access, require_roles
 from ..services.audit import log_audit
+from ..services.comment_mentions import (
+    build_project_mention_candidates,
+    normalize_comment_and_mentions,
+    render_comment_html,
+)
+from ..services.notifications import create_comment_mention_notifications
 from .web_items import _get_prev_next_item_ids, _item_media_conversion_payload
 
 router = APIRouter(include_in_schema=False)
@@ -161,6 +167,7 @@ def _build_review_change_awareness(
         "base_revision": baseline_payload.get("annotation_revision"),
         "current_revision": item.annotation_revision,
         "baseline_comment": baseline_comment.comment,
+        "baseline_comment_mentions": baseline_comment.mentions,
         "baseline_created_at": baseline_comment.created_at,
         "states_by_client_uid": states_by_client_uid,
         "counts": counts,
@@ -315,6 +322,7 @@ def review_item(
     display_media_url = str(
         request.url_for("item_media", item_id=item.id, variant=display_media_variant)
     )
+    mention_candidates = build_project_mention_candidates(db, project)
 
     return templates.TemplateResponse(
         request=request,
@@ -331,6 +339,7 @@ def review_item(
             "review_comments": review_comments,
             "review_change_awareness": review_change_awareness,
             "current_user": current_user,
+            "mention_candidates": mention_candidates,
             "prev_item_id": prev_item_id,
             "next_item_id": next_item_id,
             "prev_changed_item_id": prev_changed_item_id,
@@ -338,6 +347,7 @@ def review_item(
             "display_media_url": display_media_url,
             "media_conversion": media_conversion,
             "can_review": current_user.role in {UserRole.reviewer, UserRole.project_admin, UserRole.system_admin},
+            "render_comment_html": render_comment_html,
         },
     )
 
@@ -415,7 +425,8 @@ def reject_item_review(
 
     ensure_project_team_access(item.project, current_user)
 
-    clean_comment = comment.strip()
+    mention_candidates = build_project_mention_candidates(db, item.project)
+    clean_comment, mentions = normalize_comment_and_mentions(comment, mention_candidates)
     if not clean_comment:
         return PlainTextResponse("Reject comment is required", status_code=400)
 
@@ -439,7 +450,19 @@ def reject_item_review(
         annotation_revision=item.annotation_revision,
         snapshot_json=_build_reject_snapshot(item, annotations),
     )
+    review_comment.mentions = mentions
     db.add(review_comment)
+
+    create_comment_mention_notifications(
+        db=db,
+        project=item.project,
+        item_id=item.id,
+        item_name=item.display_name,
+        actor=current_user,
+        comment_text=clean_comment,
+        mentions=mentions,
+        source="review_comment",
+    )
 
     item.status = ItemStatus.in_progress
     db.add(item)

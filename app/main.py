@@ -34,6 +34,7 @@ from .models import Annotation, Item, ItemKind, Team, User, UserRole
 from .routers import (
     api_annotations,
     api_export,
+    api_notifications,
     api_sam,
     auth,
     web_items,
@@ -369,6 +370,12 @@ def ensure_runtime_schema() -> None:
             _ensure_missing_column(
                 connection=conn,
                 table_name="review_comment",
+                column_name="mentions_json",
+                ddl="ALTER TABLE review_comment ADD COLUMN mentions_json TEXT",
+            )
+            _ensure_missing_column(
+                connection=conn,
+                table_name="review_comment",
                 column_name="annotation_revision",
                 ddl="ALTER TABLE review_comment ADD COLUMN annotation_revision INTEGER",
             )
@@ -377,6 +384,14 @@ def ensure_runtime_schema() -> None:
                 table_name="review_comment",
                 column_name="snapshot_json",
                 ddl="ALTER TABLE review_comment ADD COLUMN snapshot_json TEXT",
+            )
+
+        if "region_comment" in table_names:
+            _ensure_missing_column(
+                connection=conn,
+                table_name="region_comment",
+                column_name="mentions_json",
+                ddl="ALTER TABLE region_comment ADD COLUMN mentions_json TEXT",
             )
 
 
@@ -768,6 +783,7 @@ def register_core_routers(app: FastAPI) -> None:
     app.include_router(web_items.router)
     app.include_router(web_review.router)
     app.include_router(api_annotations.router, prefix="/api")
+    app.include_router(api_notifications.router, prefix="/api")
     app.include_router(api_sam.router, prefix="/api")
     app.include_router(api_export.router, prefix="/api")
     app.include_router(ws_collaboration.router)

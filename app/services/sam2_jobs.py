@@ -25,6 +25,7 @@ from ..models import (
 from ..schemas import AnnotationRead, Sam2TrackJobRead, Sam2TrackJobStatusResponse
 from .audit import log_audit
 from .collaboration import collaboration_hub
+from .notifications import create_sam2_job_notifications
 from .sam2 import Sam2Error, Sam2PromptPayload, Sam2Suggestion, get_video_track_suggestions
 
 
@@ -602,6 +603,11 @@ class Sam2TrackJobRunner:
                     "annotation_revision": item.annotation_revision,
                 },
             )
+            create_sam2_job_notifications(
+                db=db,
+                project=item.project,
+                job=job,
+            )
 
             db.flush()
             annotations_payload = _serialize_item_annotations(db, item.id)
@@ -632,6 +638,7 @@ class Sam2TrackJobRunner:
             job = db.get(Sam2TrackJob, job_id)
             if job is None:
                 return
+            item = db.get(Item, job.item_id) if job.item_id is not None else None
 
             job.status = Sam2JobStatus.failed
             job.error_message = error_message
@@ -654,6 +661,12 @@ class Sam2TrackJobRunner:
                     "error": error_message,
                 },
             )
+            if item is not None:
+                create_sam2_job_notifications(
+                    db=db,
+                    project=item.project,
+                    job=job,
+                )
 
 
 sam2_track_job_runner = Sam2TrackJobRunner()

@@ -1,3 +1,8 @@
+import {
+  attachMentionAutocomplete,
+  renderCommentHtml,
+} from "./comment_mentions.js?v=20260330_comment_mentions";
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -24,6 +29,25 @@ function cloneAuditUser(user) {
     cloned.email = user.email;
   }
   return Object.keys(cloned).length ? cloned : null;
+}
+
+function cloneMention(mention) {
+  if (!mention || typeof mention !== "object") return null;
+  const userId = Number(mention.user_id);
+  const start = Number(mention.start);
+  const end = Number(mention.end);
+  const email = String(mention.email ?? "").trim().toLowerCase();
+  const displayName = String(mention.display_name ?? "").trim() || email;
+  const mentionText = String(mention.mention_text ?? `@${email}`).trim();
+  if (!Number.isInteger(userId) || !email || !mentionText) return null;
+  return {
+    user_id: userId,
+    email,
+    display_name: displayName,
+    mention_text: mentionText,
+    start: Number.isInteger(start) ? start : -1,
+    end: Number.isInteger(end) ? end : -1,
+  };
 }
 
 function normalizeCommentText(value) {
@@ -85,6 +109,9 @@ function cloneRegionComment(comment) {
     x2: Number(comment?.x2),
     y2: Number(comment?.y2),
     comment: normalizeCommentText(comment?.comment),
+    mentions: Array.isArray(comment?.mentions)
+      ? comment.mentions.map(cloneMention).filter(Boolean)
+      : [],
     created_by: Number.isInteger(comment?.created_by) ? comment.created_by : null,
     updated_by: Number.isInteger(comment?.updated_by) ? comment.updated_by : null,
     created_at:
@@ -868,7 +895,7 @@ function renderRegionCommentDetail(canvas) {
         </div>
         ` : ""}
       </div>
-      <div class="region-comment-body">${escapeHtml(comment.comment).replaceAll("\n", "<br>")}</div>
+      <div class="region-comment-body">${renderCommentHtml(comment.comment, comment.mentions)}</div>
       ${
         permalink
           ? `<div class="region-comment-share-row mt-3">
@@ -992,8 +1019,8 @@ function renderRegionCommentTooltip(canvas) {
     </div>
     ${
       isEditing
-        ? `<textarea class="form-control form-control-sm region-comment-tooltip-textarea" data-comment-input placeholder="Explain what should be checked in this area">${escapeHtml(comment.comment)}</textarea>`
-        : `<div class="region-comment-tooltip-body">${escapeHtml(comment.comment).replaceAll("\n", "<br>")}</div>`
+        ? `<textarea class="form-control form-control-sm region-comment-tooltip-textarea" data-comment-input placeholder="Explain what should be checked in this area. Type @ to mention teammates.">${escapeHtml(comment.comment)}</textarea>`
+        : `<div class="region-comment-tooltip-body">${renderCommentHtml(comment.comment, comment.mentions)}</div>`
     }
     <div class="region-comment-tooltip-footer">
       <div class="region-comment-tooltip-audit">${escapeHtml(auditText).replaceAll("\n", "<br>")}</div>
@@ -1057,6 +1084,11 @@ function renderRegionCommentTooltip(canvas) {
 
   const input = state.tooltipEl.querySelector("[data-comment-input]");
   if (input) {
+    attachMentionAutocomplete(input, {
+      candidates: Array.isArray(state.mentionCandidates)
+        ? state.mentionCandidates
+        : [],
+    });
     input.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
@@ -1452,10 +1484,16 @@ function installRegionCommentUi(canvas) {
   });
 }
 
-function initializeRegionComments(canvas, initialComments, currentUser) {
+function initializeRegionComments(
+  canvas,
+  initialComments,
+  currentUser,
+  mentionCandidates
+) {
   const linkedTarget = getRequestedRegionCommentTarget();
   canvas.regionCommentState = {
     currentUser: currentUser || null,
+    mentionCandidates: Array.isArray(mentionCandidates) ? mentionCandidates : [],
     visible: true,
     drawMode: false,
     isDrawing: false,
@@ -1513,7 +1551,12 @@ export function enhanceAnnotationCanvasWithComments(canvas, options = {}) {
   const originalUpdateHoverCursor = canvas.updateHoverCursor.bind(canvas);
 
   canvas.init = function initWithComments(initialAnnotations) {
-    initializeRegionComments(this, initialComments, options.currentUser || null);
+    initializeRegionComments(
+      this,
+      initialComments,
+      options.currentUser || null,
+      options.mentionCandidates || []
+    );
     originalInit(initialAnnotations);
     syncVisibleComments(this);
     renderRegionCommentPanel(this);

@@ -335,6 +335,7 @@
               placeholder="Explain what needs to be fixed"
               required
             ></textarea>
+            <div class="small text-secondary mb-2">Type <code>@</code> to mention teammates.</div>
             <div class="d-flex gap-2">
               <button
                 type="submit"
@@ -399,7 +400,7 @@
         </div>
         {% if review_change_awareness.baseline_comment %}
         <div class="small border rounded px-2 py-2 mb-2">
-          {{ review_change_awareness.baseline_comment }}
+          {{ render_comment_html(review_change_awareness.baseline_comment, review_change_awareness.baseline_comment_mentions) }}
         </div>
         {% endif %}
         {% if review_change_awareness.deleted_annotations %}
@@ -441,7 +442,7 @@
               <span>{{ comment.reviewer.email if comment.reviewer else 'Unknown reviewer' }}</span>
               <span>{{ comment.created_at }}</span>
             </div>
-            <div>{{ comment.comment }}</div>
+            <div class="review-comment-body">{{ render_comment_html(comment.comment, comment.mentions) }}</div>
           </div>
           {% else %}
           <div class="px-2 py-3 text-muted text-center">
@@ -545,6 +546,7 @@
       "x2": {{ region_comment.x2 }},
       "y2": {{ region_comment.y2 }},
       "comment": {{ region_comment.comment | tojson }},
+      "mentions": {{ region_comment.mentions | tojson }},
       "created_by": {{ region_comment.created_by if region_comment.created_by is not none else "null" }},
       "updated_by": {{ region_comment.updated_by if region_comment.updated_by is not none else "null" }},
       "created_at": {{ region_comment.created_at.isoformat() | tojson }},
@@ -573,8 +575,8 @@
 
 {% block extra_js %}
 {% if item.kind.value != "video" or media_conversion.ready %}
-<script type="module" src="{{ url_for('static', path='js/annotation_canvas.js') }}?v=20260328_object_label_toggle"></script>
-<script type="module" src="{{ url_for('static', path='js/review_shortcuts.js') }}"></script>
+<script type="module" src="{{ url_for('static', path='js/annotation_canvas.js') }}?v=20260330_comment_mentions"></script>
+<script type="module" src="{{ url_for('static', path='js/review_shortcuts.js') }}?v=20260330_comment_mentions"></script>
 {% endif %}
 {% if item.kind.value == "video" %}
 <script type="module" src="{{ url_for('static', path='js/media_conversion_status.js') }}?v=20260328_media_conversion_status"></script>
@@ -593,6 +595,7 @@
     nextChangedItemUrl: {% if next_changed_item_id %}"{{ url_for('review_item', item_id=next_changed_item_id) }}"{% else %}null{% endif %},
     annotationRevision: {{ annotation_revision }},
     readOnly: true,
+    mentionCandidates: {{ mention_candidates | tojson }},
     mediaConversion: {{ media_conversion | tojson }},
   };
   window.VISION_FORGE_CONFIG = visionForgeConfig;

@@ -22,6 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+from .services.comment_mentions import mentions_json_dumps, mentions_json_loads
 
 
 def generate_annotation_client_uid() -> str:
@@ -100,6 +101,9 @@ class User(Base):
     team: Mapped["Team | None"] = relationship(back_populates="users")
     projects_owned: Mapped[list["Project"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
+    )
+    notifications: Mapped[list["Notification"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
     )
 
     @property
@@ -317,6 +321,7 @@ class RegionComment(Base):
     x2: Mapped[float] = mapped_column(Float, nullable=False)
     y2: Mapped[float] = mapped_column(Float, nullable=False)
     comment: Mapped[str] = mapped_column(Text, nullable=False)
+    mentions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -330,6 +335,14 @@ class RegionComment(Base):
     created_by_user: Mapped["User | None"] = relationship(foreign_keys=[created_by])
     updated_by_user: Mapped["User | None"] = relationship(foreign_keys=[updated_by])
 
+    @property
+    def mentions(self) -> list[dict]:
+        return mentions_json_loads(self.mentions_json)
+
+    @mentions.setter
+    def mentions(self, value: list[dict] | None) -> None:
+        self.mentions_json = mentions_json_dumps(value)
+
 
 class ReviewComment(Base):
     __tablename__ = "review_comment"
@@ -341,6 +354,7 @@ class ReviewComment(Base):
     )
     reviewer_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     comment: Mapped[str] = mapped_column(Text, nullable=False)
+    mentions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     annotation_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -360,6 +374,14 @@ class ReviewComment(Base):
         except json.JSONDecodeError:
             return None
         return value if isinstance(value, dict) else None
+
+    @property
+    def mentions(self) -> list[dict]:
+        return mentions_json_loads(self.mentions_json)
+
+    @mentions.setter
+    def mentions(self, value: list[dict] | None) -> None:
+        self.mentions_json = mentions_json_dumps(value)
 
 
 class AuditLog(Base):
@@ -417,3 +439,39 @@ class Sam2TrackJob(Base):
 
     item: Mapped[Item] = relationship()
     requested_by_user: Mapped["User | None"] = relationship(foreign_keys=[requested_by])
+
+
+class Notification(Base):
+    __tablename__ = "notification"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("project.id"), nullable=True)
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("item.id"), nullable=True)
+    sam2_track_job_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sam2_track_job.id"),
+        nullable=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    link_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    user: Mapped[User] = relationship(back_populates="notifications")
+
+    @property
+    def payload(self) -> dict | None:
+        if not self.payload_json:
+            return None
+        try:
+            value = json.loads(self.payload_json)
+        except json.JSONDecodeError:
+            return None
+        return value if isinstance(value, dict) else None

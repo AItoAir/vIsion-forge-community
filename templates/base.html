@@ -15,7 +15,7 @@
     />
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 
-    <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}?v=20260326_team_settings_modal" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}?v=20260330_comment_mentions" />
     {% block extra_head %}{% endblock %}
   </head>
   <body hx-boost="true">
@@ -35,6 +35,34 @@
             {{ nav_user.email }}
             ({{ nav_user.role.value }}{% if nav_user.team %} / {{ nav_user.team.name }}{% endif %})
           </span>
+          <div id="notification-center" class="dropdown notification-center">
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-light position-relative notification-center-toggle"
+              data-bs-toggle="dropdown"
+              data-notification-toggle
+              aria-expanded="false"
+              aria-label="Open notifications"
+            >
+              <i class="bi bi-bell"></i>
+              <span
+                class="badge rounded-pill text-bg-danger notification-center-badge"
+                data-notification-badge
+                hidden
+              >
+                0
+              </span>
+            </button>
+            <div class="dropdown-menu dropdown-menu-end dropdown-menu-dark notification-center-menu p-0">
+              <div class="notification-center-header">
+                <div class="fw-semibold">Notifications</div>
+                <div class="small text-secondary" data-notification-status>Loading...</div>
+              </div>
+              <div class="notification-center-list" data-notification-list>
+                <div class="notification-center-empty">Loading notifications...</div>
+              </div>
+            </div>
+          </div>
           <a class="btn btn-sm btn-outline-light" href="{{ url_for('my_page') }}">My Page</a>
           {% if nav_user.role.value == "system_admin" %}
           <a
@@ -62,9 +90,15 @@
       src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
     ></script>
     <script src="{{ url_for('static', path='js/bootstrap_fallback.js') }}"></script>
+    <script src="{{ url_for('static', path='js/notification_center.js') }}?v=20260330_notifications"></script>
     <script>
       window.VISION_FORGE_SECURITY = {
         csrfToken: {{ request.state.csrf_token | tojson }},
+      };
+      window.VISION_FORGE_NOTIFICATIONS = {
+        listUrl: {{ (url_for('list_notifications') | string) | tojson }},
+        readUrl: {{ (url_for('read_notifications') | string) | tojson }},
+        pollIntervalMs: 30000,
       };
 
       (() => {

@@ -57,6 +57,14 @@ function getRemoteParticipants(canvas) {
     });
 }
 
+function usesAsyncVideoFramePresentation(canvas, source) {
+  if (canvas?.kind !== "video") {
+    return false;
+  }
+
+  return source === "scrub" || source === "step" || source === "collaboration-follow";
+}
+
 function clampPointToImage(canvas, point) {
   const maxWidth =
     canvas.imageWidth || canvas.mediaEl.naturalWidth || canvas.mediaEl.videoWidth || 0;
@@ -444,6 +452,7 @@ function renderParticipantList(canvas) {
             : "Focus";
       followBtn.addEventListener("click", (evt) => {
         evt.preventDefault();
+        evt.stopPropagation();
         toggleFollowParticipant(canvas, participant.participant_id);
       });
       actions.appendChild(followBtn);
@@ -544,8 +553,12 @@ function toggleFollowParticipant(canvas, participantId) {
 
   state.followParticipantId = participantId;
   renderParticipantList(canvas);
+  const shouldWaitForFrameSync =
+    canvas.kind === "video" &&
+    Number.isInteger(participant.frame_index) &&
+    canvas.currentFrameIndex !== participant.frame_index;
   applyFollowParticipant(canvas, participant);
-  schedulePresenceUpdate(canvas, { immediate: true });
+  schedulePresenceUpdate(canvas, { immediate: !shouldWaitForFrameSync });
 }
 
 function resolveParticipantAnnotation(canvas, participant) {
@@ -966,6 +979,7 @@ export function enhanceAnnotationCanvasWithCollaboration(canvas, config = {}) {
   const originalOnMouseMove = canvas.onMouseMove.bind(canvas);
   const originalOnMouseUp = canvas.onMouseUp.bind(canvas);
   const originalRedraw = canvas.redraw.bind(canvas);
+  const originalApplyVisibleFrame = canvas.applyVisibleFrame.bind(canvas);
   const originalSetCurrentFrame = canvas.setCurrentFrame.bind(canvas);
   const originalMarkActiveAnnotation = canvas.markActiveAnnotation.bind(canvas);
   const originalTogglePlayback = canvas.togglePlayback.bind(canvas);
@@ -1011,9 +1025,21 @@ export function enhanceAnnotationCanvasWithCollaboration(canvas, config = {}) {
     drawParticipantOverlays(canvas);
   };
 
+  canvas.applyVisibleFrame = function patchedApplyVisibleFrame(frameIndex, options = {}) {
+    const result = originalApplyVisibleFrame(frameIndex, options);
+    const source = options?.source || "internal";
+    if (usesAsyncVideoFramePresentation(canvas, source)) {
+      schedulePresenceUpdate(canvas, { immediate: true });
+    }
+    return result;
+  };
+
   canvas.setCurrentFrame = function patchedSetCurrentFrame(frameIndex, options = {}) {
     const result = originalSetCurrentFrame(frameIndex, options);
-    schedulePresenceUpdate(canvas);
+    const source = options?.source || "scrub";
+    if (!usesAsyncVideoFramePresentation(canvas, source)) {
+      schedulePresenceUpdate(canvas);
+    }
     return result;
   };
 

@@ -179,6 +179,15 @@ class RegionCommentCreate(RegionCommentBase):
     pass
 
 
+class CommentMentionRead(BaseModel):
+    user_id: int
+    email: str
+    display_name: str
+    mention_text: str
+    start: int
+    end: int
+
+
 class RegionCommentRead(RegionCommentBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -190,6 +199,7 @@ class RegionCommentRead(RegionCommentBase):
     updated_at: datetime
     created_by_user: AnnotationAuditUserRead | None = None
     updated_by_user: AnnotationAuditUserRead | None = None
+    mentions: list[CommentMentionRead] = Field(default_factory=list)
 
 
 class RegionCommentsPatchRequest(BaseModel):
@@ -340,3 +350,46 @@ class Sam2TrackJobStatusResponse(BaseModel):
     max_queue_size: int
     item_jobs: list[Sam2TrackJobRead] = Field(default_factory=list)
     latest_finished_job: Sam2TrackJobRead | None = None
+
+
+class NotificationRead(BaseModel):
+    id: int
+    event_type: str
+    title: str
+    body: str
+    link_path: str | None = None
+    project_id: int | None = None
+    item_id: int | None = None
+    sam2_track_job_id: int | None = None
+    created_at: datetime
+    read_at: datetime | None = None
+    is_unread: bool = True
+
+
+class NotificationListResponse(BaseModel):
+    unread_count: int
+    notifications: list[NotificationRead] = Field(default_factory=list)
+
+
+class NotificationMarkReadRequest(BaseModel):
+    ids: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_ids(self) -> "NotificationMarkReadRequest":
+        normalized_ids: list[int] = []
+        for value in self.ids:
+            notification_id = int(value)
+            if notification_id <= 0:
+                raise ValueError("notification ids must be positive integers")
+            normalized_ids.append(notification_id)
+
+        if len(set(normalized_ids)) != len(normalized_ids):
+            raise ValueError("notification ids must be unique")
+
+        self.ids = normalized_ids
+        return self
+
+
+class NotificationMarkReadResponse(BaseModel):
+    unread_count: int
+    marked_count: int

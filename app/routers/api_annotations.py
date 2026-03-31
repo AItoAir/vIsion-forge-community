@@ -32,7 +32,13 @@ from ..schemas import (
 )
 from ..security import ensure_project_team_access, require_roles
 from ..services.audit import log_audit
+from ..services.comment_mentions import (
+    build_project_mention_candidates,
+    mentioned_user_ids,
+    normalize_comment_and_mentions,
+)
 from ..services.collaboration import collaboration_hub
+from ..services.notifications import create_comment_mention_notifications
 
 router = APIRouter(tags=["annotations"])
 
@@ -268,7 +274,13 @@ def _validate_region_comment_payload_for_item_kind(
 def _region_comment_payload_values(
     item: Item,
     region_comment_in: RegionCommentCreate,
+    *,
+    mention_candidates: list[dict] | None = None,
 ) -> dict:
+    normalized_comment, mentions = normalize_comment_and_mentions(
+        region_comment_in.comment,
+        mention_candidates or [],
+    )
     return {
         "frame_index": None
         if item.kind == ItemKind.image
@@ -277,7 +289,8 @@ def _region_comment_payload_values(
         "y1": region_comment_in.y1,
         "x2": region_comment_in.x2,
         "y2": region_comment_in.y2,
-        "comment": region_comment_in.comment,
+        "comment": normalized_comment,
+        "mentions": mentions,
     }
 
 
@@ -328,6 +341,7 @@ def _region_comment_matches_payload(
         and region_comment.x2 == payload_values["x2"]
         and region_comment.y2 == payload_values["y2"]
         and region_comment.comment == payload_values["comment"]
+        and region_comment.mentions == payload_values["mentions"]
     )
 
 
@@ -341,6 +355,7 @@ def _apply_region_comment_payload(
     region_comment.x2 = payload_values["x2"]
     region_comment.y2 = payload_values["y2"]
     region_comment.comment = payload_values["comment"]
+    region_comment.mentions = payload_values["mentions"]
 
 
 def _apply_sparse_upserts(
@@ -387,17 +402,28 @@ def _apply_region_comment_upserts(
     upserts: list[RegionCommentCreate],
     existing_comments_by_uid: dict[str, RegionComment],
     current_user_id: int,
-) -> tuple[int, int]:
+    mention_candidates: list[dict] | None = None,
+) -> tuple[int, int, list[tuple[RegionComment, set[int]]]]:
     if not upserts:
-        return 0, 0
+        return 0, 0, []
 
     created_count = 0
     updated_count = 0
+    changed_comments: list[tuple[RegionComment, set[int]]] = []
 
     for region_comment_in in upserts:
         client_uid = (region_comment_in.client_uid or "").strip() or uuid4().hex
         region_comment = existing_comments_by_uid.get(client_uid)
-        payload_values = _region_comment_payload_values(item, region_comment_in)
+        payload_values = _region_comment_payload_values(
+            item,
+            region_comment_in,
+            mention_candidates=mention_candidates,
+        )
+        previous_mentioned_user_ids = (
+            mentioned_user_ids(region_comment.mentions)
+            if region_comment is not None
+            else set()
+        )
         if region_comment is None:
             region_comment = RegionComment(
                 item_id=item.id,
@@ -415,8 +441,9 @@ def _apply_region_comment_upserts(
             region_comment.updated_by = current_user_id
             updated_count += 1
         db.add(region_comment)
+        changed_comments.append((region_comment, previous_mentioned_user_ids))
 
-    return created_count, updated_count
+    return created_count, updated_count, changed_comments
 
 
 def _revision_conflict_response(db: Session, item: Item) -> JSONResponse:
@@ -758,6 +785,7 @@ def patch_region_comments(
         for region_comment in existing_comments
         if region_comment.client_uid
     }
+    mention_candidates = build_project_mention_candidates(db, item.project)
 
     delete_existing_client_uids = sorted(
         client_uid
@@ -774,13 +802,35 @@ def patch_region_comments(
         for client_uid in delete_existing_client_uids:
             existing_comments_by_uid.pop(client_uid, None)
 
-    created_count, updated_count = _apply_region_comment_upserts(
+    created_count, updated_count, changed_comments = _apply_region_comment_upserts(
         db=db,
         item=item,
         upserts=payload.upserts,
         existing_comments_by_uid=existing_comments_by_uid,
         current_user_id=current_user.id,
+        mention_candidates=mention_candidates,
     )
+
+    for region_comment, previous_mentioned_user_ids in changed_comments:
+        new_mentions = [
+            mention
+            for mention in region_comment.mentions
+            if int(mention.get("user_id") or 0) not in previous_mentioned_user_ids
+        ]
+        if not new_mentions:
+            continue
+        create_comment_mention_notifications(
+            db=db,
+            project=item.project,
+            item_id=item.id,
+            item_name=item.display_name,
+            actor=current_user,
+            comment_text=region_comment.comment,
+            mentions=new_mentions,
+            source="region_comment",
+            region_comment_client_uid=region_comment.client_uid,
+            frame_index=region_comment.frame_index,
+        )
 
     changed = bool(delete_existing_client_uids or created_count or updated_count)
     comment_count = len(existing_comments_by_uid)

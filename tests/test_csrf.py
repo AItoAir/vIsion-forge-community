@@ -6,12 +6,14 @@ from types import SimpleNamespace
 from app.csrf import (
     CSRF_HEADER_NAME,
     configured_allowed_origins,
+    current_websocket_origin,
     csrf_protection_required,
     ensure_csrf_token,
     normalize_origin,
     request_has_allowed_origin,
     request_has_valid_csrf_token,
     request_passes_csrf,
+    websocket_origin_allowed,
 )
 from app.config import settings
 
@@ -30,6 +32,18 @@ class DummyRequest:
         self.headers = headers or {}
         self.session = session or {}
         self.state = SimpleNamespace()
+
+
+class DummyWebSocket:
+    def __init__(
+        self,
+        *,
+        scheme: str = "ws",
+        netloc: str = "testserver",
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        self.url = SimpleNamespace(scheme=scheme, netloc=netloc)
+        self.headers = headers or {}
 
 
 class CsrfHelpersTests(unittest.TestCase):
@@ -77,6 +91,23 @@ class CsrfHelpersTests(unittest.TestCase):
         )
 
         self.assertTrue(request_has_allowed_origin(request))
+
+    def test_current_websocket_origin_maps_ws_scheme_to_http(self) -> None:
+        websocket = DummyWebSocket(scheme="ws", netloc="testserver")
+
+        self.assertEqual(
+            current_websocket_origin(websocket),
+            "http://testserver",
+        )
+
+    def test_websocket_origin_allowed_accepts_same_origin(self) -> None:
+        websocket = DummyWebSocket(
+            scheme="ws",
+            netloc="testserver",
+            headers={"origin": "http://testserver"},
+        )
+
+        self.assertTrue(websocket_origin_allowed(websocket))
 
     def test_request_has_valid_csrf_token_accepts_matching_header(self) -> None:
         request = DummyRequest(

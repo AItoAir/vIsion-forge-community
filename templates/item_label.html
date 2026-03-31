@@ -585,14 +585,14 @@
           <div class="annotation-tool-header">
             <div>
               <div class="annotation-tool-title">Interpolation</div>
-              <div class="small text-secondary">Mark two frames and fill the range only when you want to.</div>
+              <div class="small text-secondary">Set A and B on the current frame, then apply interpolation only when you want to.</div>
             </div>
           </div>
           <div id="interpolation-track-label" class="annotation-tool-hint">
             Select an object on the canvas or object timeline.
           </div>
           <div id="interpolation-keyframes" class="interpolation-keyframes mb-2">
-            <div class="small text-secondary">No object selected.</div>
+            <div class="small text-secondary">This panel stays lightweight. Use the sidebar keyframe buttons or the object timeline to move between keyframes.</div>
           </div>
           <div class="annotation-button-grid mb-2">
             <button id="btn-set-interpolation-start" type="button" class="btn btn-sm btn-outline-info">
@@ -845,6 +845,7 @@
       "x2": {{ region_comment.x2 }},
       "y2": {{ region_comment.y2 }},
       "comment": {{ region_comment.comment | tojson }},
+      "mentions": {{ region_comment.mentions | tojson }},
       "created_by": {{ region_comment.created_by if region_comment.created_by is not none else "null" }},
       "updated_by": {{ region_comment.updated_by if region_comment.updated_by is not none else "null" }},
       "created_at": {{ region_comment.created_at.isoformat() | tojson }},
@@ -878,7 +879,7 @@
 
 {% block extra_js %}
 {% if item.kind.value != "video" or media_conversion.ready %}
-<script type="module" src="{{ url_for('static', path='js/annotation_canvas.js') }}?v=20260328_object_label_toggle"></script>
+<script type="module" src="{{ url_for('static', path='js/annotation_canvas.js') }}?v=20260330_collaboration_presence_frame_fix"></script>
 {% endif %}
 {% if item.kind.value == "video" %}
 <script type="module" src="{{ url_for('static', path='js/media_conversion_status.js') }}?v=20260328_media_conversion_status"></script>
@@ -900,6 +901,7 @@
     sam2JobPollIntervalMs: {{ sam2_job_poll_interval_ms }},
     collaborationEnabled: true,
     collaborationWsPath: "/ws/items/{{ item.id }}/presence",
+    mentionCandidates: {{ mention_candidates | tojson }},
     currentUser: {
       id: {{ current_user.id }},
       email: {{ current_user.email | tojson }},

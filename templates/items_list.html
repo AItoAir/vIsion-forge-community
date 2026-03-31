@@ -82,11 +82,147 @@
     font-size: 1rem;
     font-weight: 700;
   }
+
+  .item-filters-card {
+    background:
+      linear-gradient(135deg, rgba(32, 201, 151, 0.08), rgba(255, 255, 255, 0.02)),
+      #11161b;
+  }
+
+  .item-filters-card-hidden {
+    display: none;
+  }
+
+  .item-filter-grid {
+    display: grid;
+    grid-template-columns: minmax(240px, 2fr) repeat(3, minmax(150px, 1fr)) auto;
+    gap: 0.8rem;
+    align-items: end;
+  }
+
+  .item-filter-field {
+    min-width: 0;
+  }
+
+  .item-filter-label {
+    margin-bottom: 0.3rem;
+    display: block;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.62);
+  }
+
+  .item-filter-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .item-filter-summary {
+    margin-top: 0.8rem;
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  @media (max-width: 1199.98px) {
+    .item-filter-grid {
+      grid-template-columns: repeat(2, minmax(180px, 1fr));
+    }
+
+    .item-filter-actions {
+      justify-content: flex-start;
+    }
+  }
+
+  @media (max-width: 767.98px) {
+    .item-filter-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .item-label-summary {
+    margin-top: 0.55rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .item-label-summary-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.65rem;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .item-label-summary-name {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-weight: 600;
+  }
+
+  .item-label-summary-dot {
+    width: 0.6rem;
+    height: 0.6rem;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--item-label-color, #6c757d);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  }
+
+  .item-label-summary-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .item-label-summary-meta {
+    flex: 0 0 auto;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.74rem;
+    white-space: nowrap;
+  }
+
+  .item-label-summary-more {
+    margin-top: 0.1rem;
+  }
+
+  .item-label-summary-more > summary {
+    list-style: none;
+  }
+
+  .item-label-summary-more > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .item-label-summary-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.74rem;
+    cursor: pointer;
+  }
+
+  .item-label-summary-hidden {
+    margin-top: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
 </style>
 {% endblock %}
 
 {% block content %}
-{% set status_filter_value = status_filter.value if status_filter else none %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <a
@@ -180,32 +316,83 @@
       Progress: {{ '%.1f'|format(progress) }}%
     </div>
     {% endif %}
-    <div class="btn-group btn-group-sm" role="group">
-      <a
-        href="{{ url_for('project_items', project_id=project.id) }}"
-        class="btn {% if not status_filter_value %}btn-primary{% else %}btn-outline-primary{% endif %}"
-        >All</a
-      >
-      <a
-        href="{{ url_for('project_items', project_id=project.id) }}?status=unlabeled"
-        class="btn {% if status_filter_value == 'unlabeled' %}btn-primary{% else %}btn-outline-primary{% endif %}"
-        >Unlabeled</a
-      >
-      <a
-        href="{{ url_for('project_items', project_id=project.id) }}?status=in_progress"
-        class="btn {% if status_filter_value == 'in_progress' %}btn-primary{% else %}btn-outline-primary{% endif %}"
-        >In progress</a
-      >
-      <a
-        href="{{ url_for('project_items', project_id=project.id) }}?status=needs_review"
-        class="btn {% if status_filter_value == 'needs_review' %}btn-primary{% else %}btn-outline-primary{% endif %}"
-        >Needs review</a
-      >
-      <a
-        href="{{ url_for('project_items', project_id=project.id) }}?status=done"
-        class="btn {% if status_filter_value == 'done' %}btn-primary{% else %}btn-outline-primary{% endif %}"
-        >Done</a
-      >
+  </div>
+</div>
+
+<div class="card border-secondary item-filters-card item-filters-card-hidden shadow-sm mb-3">
+  <div class="card-body py-3">
+    <form
+      method="get"
+      action="{{ url_for('project_items', project_id=project.id) }}"
+      class="item-filter-grid"
+    >
+      <div class="item-filter-field">
+        <label for="items-filter-query" class="item-filter-label">File name</label>
+        <input
+          id="items-filter-query"
+          type="search"
+          name="q"
+          value="{{ filter_state.query }}"
+          class="form-control form-control-sm"
+          placeholder="Search by file name"
+          autocomplete="off"
+        />
+      </div>
+      <div class="item-filter-field">
+        <label for="items-filter-kind" class="item-filter-label">Kind</label>
+        <select id="items-filter-kind" name="kind" class="form-select form-select-sm">
+          <option value="">All media</option>
+          <option value="image" {% if filter_state.kind == "image" %}selected{% endif %}>Image</option>
+          <option value="video" {% if filter_state.kind == "video" %}selected{% endif %}>Video</option>
+        </select>
+      </div>
+      <div class="item-filter-field">
+        <label for="items-filter-status" class="item-filter-label">Status</label>
+        <select id="items-filter-status" name="status" class="form-select form-select-sm">
+          <option value="">All statuses</option>
+          <option value="unlabeled" {% if filter_state.status == "unlabeled" %}selected{% endif %}>Unlabeled</option>
+          <option value="in_progress" {% if filter_state.status == "in_progress" %}selected{% endif %}>In progress</option>
+          <option value="needs_review" {% if filter_state.status == "needs_review" %}selected{% endif %}>Needs review</option>
+          <option value="done" {% if filter_state.status == "done" %}selected{% endif %}>Done</option>
+        </select>
+      </div>
+      <div class="item-filter-field">
+        <label for="items-filter-label-class" class="item-filter-label">Category</label>
+        <select
+          id="items-filter-label-class"
+          name="label_class_id"
+          class="form-select form-select-sm"
+        >
+          <option value="">All categories</option>
+          {% for label_class in project_label_classes %}
+          <option
+            value="{{ label_class.id }}"
+            {% if filter_state.label_class_id == label_class.id %}selected{% endif %}
+          >
+            {{ label_class.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="item-filter-actions">
+        <button type="submit" class="btn btn-sm btn-primary">Search</button>
+        <a
+          href="{{ url_for('project_items', project_id=project.id) }}"
+          class="btn btn-sm btn-outline-secondary"
+        >
+          Clear
+        </a>
+      </div>
+    </form>
+    <div class="item-filter-summary">
+      {% if filters_applied %}
+      Showing {{ filtered_item_count }} of {{ total_item_count }} items
+      {% if selected_label_class %}
+      · category: {{ selected_label_class.name }}
+      {% endif %}
+      {% else %}
+      Showing all {{ total_item_count }} items
+      {% endif %}
     </div>
   </div>
 </div>
@@ -332,6 +519,92 @@
 </div>
 {% endif %}
 
+<div class="card border-secondary item-filters-card shadow-sm mb-3">
+  <div class="card-body py-3">
+    <form
+      method="get"
+      action="{{ url_for('project_items', project_id=project.id) }}"
+      class="item-filter-grid"
+    >
+      <div class="item-filter-field">
+        <label for="items-filter-query-bottom" class="item-filter-label">File name</label>
+        <input
+          id="items-filter-query-bottom"
+          type="search"
+          name="q"
+          value="{{ filter_state.query }}"
+          class="form-control form-control-sm"
+          placeholder="Search by file name"
+          autocomplete="off"
+        />
+      </div>
+      <div class="item-filter-field">
+        <label for="items-filter-kind-bottom" class="item-filter-label">Kind</label>
+        <select
+          id="items-filter-kind-bottom"
+          name="kind"
+          class="form-select form-select-sm"
+        >
+          <option value="">All media</option>
+          <option value="image" {% if filter_state.kind == "image" %}selected{% endif %}>Image</option>
+          <option value="video" {% if filter_state.kind == "video" %}selected{% endif %}>Video</option>
+        </select>
+      </div>
+      <div class="item-filter-field">
+        <label for="items-filter-status-bottom" class="item-filter-label">Status</label>
+        <select
+          id="items-filter-status-bottom"
+          name="status"
+          class="form-select form-select-sm"
+        >
+          <option value="">All statuses</option>
+          <option value="unlabeled" {% if filter_state.status == "unlabeled" %}selected{% endif %}>Unlabeled</option>
+          <option value="in_progress" {% if filter_state.status == "in_progress" %}selected{% endif %}>In progress</option>
+          <option value="needs_review" {% if filter_state.status == "needs_review" %}selected{% endif %}>Needs review</option>
+          <option value="done" {% if filter_state.status == "done" %}selected{% endif %}>Done</option>
+        </select>
+      </div>
+      <div class="item-filter-field">
+        <label for="items-filter-label-class-bottom" class="item-filter-label">Category</label>
+        <select
+          id="items-filter-label-class-bottom"
+          name="label_class_id"
+          class="form-select form-select-sm"
+        >
+          <option value="">All categories</option>
+          {% for label_class in project_label_classes %}
+          <option
+            value="{{ label_class.id }}"
+            {% if filter_state.label_class_id == label_class.id %}selected{% endif %}
+          >
+            {{ label_class.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="item-filter-actions">
+        <button type="submit" class="btn btn-sm btn-primary">Search</button>
+        <a
+          href="{{ url_for('project_items', project_id=project.id) }}"
+          class="btn btn-sm btn-outline-secondary"
+        >
+          Clear
+        </a>
+      </div>
+    </form>
+    <div class="item-filter-summary">
+      {% if filters_applied %}
+      Showing {{ filtered_item_count }} of {{ total_item_count }} items
+      {% if selected_label_class %}
+      &middot; category: {{ selected_label_class.name }}
+      {% endif %}
+      {% else %}
+      Showing all {{ total_item_count }} items
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 <table class="table table-sm align-middle">
   <thead>
     <tr>
@@ -346,6 +619,7 @@
   </thead>
   <tbody>
     {% for item in items %}
+    {% set label_summary = item_label_summaries.get(item.id) %}
     <tr>
       <td>{{ item.id }}</td>
       <td>
@@ -380,7 +654,7 @@
         </a>
       </td>
       <td>{{ item.kind.value }}</td>
-      <td class="small text-truncate" style="max-width: 280px">
+      <td class="small" style="max-width: 280px">
         <a
           href="{{ url_for('label_item', item_id=item.id) }}"
           class="text-decoration-none item-filename-link w-100 text-truncate"
@@ -389,6 +663,45 @@
         >
           {{ item.display_name }}
         </a>
+        {% if label_summary and label_summary.labels %}
+        <div class="item-label-summary">
+          {% for label in label_summary.preview_labels %}
+          <div class="item-label-summary-row">
+            <div class="item-label-summary-name">
+              <span
+                class="item-label-summary-dot"
+                style="--item-label-color: {{ label.color_hex }};"
+              ></span>
+              <span class="item-label-summary-text" title="{{ label.name }}">{{ label.name }}</span>
+            </div>
+            <span class="item-label-summary-meta">
+              {{ label.object_count }} obj · {{ label.frame_count }} fr
+            </span>
+          </div>
+          {% endfor %}
+          {% if label_summary.hidden_count %}
+          <details class="item-label-summary-more">
+            <summary class="item-label-summary-toggle">+ {{ label_summary.hidden_count }} more</summary>
+            <div class="item-label-summary-hidden">
+              {% for label in label_summary.hidden_labels %}
+              <div class="item-label-summary-row">
+                <div class="item-label-summary-name">
+                  <span
+                    class="item-label-summary-dot"
+                    style="--item-label-color: {{ label.color_hex }};"
+                  ></span>
+                  <span class="item-label-summary-text" title="{{ label.name }}">{{ label.name }}</span>
+                </div>
+                <span class="item-label-summary-meta">
+                  {{ label.object_count }} obj · {{ label.frame_count }} fr
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+          </details>
+          {% endif %}
+        </div>
+        {% endif %}
       </td>
       <td>
         <div>{{ item.w }} × {{ item.h }}</div>

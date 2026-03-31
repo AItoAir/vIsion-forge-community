@@ -1,10 +1,10 @@
 // static/js/annotation_canvas.js
 // Thin entrypoint: wire DOM to core AnnotationCanvas logic.
 
-import { AnnotationCanvas, lfDebug } from "./annotation_core.js?v=20260328_object_label_toggle";
-import { enhanceAnnotationCanvasWithComments } from "./annotation_comments.js?v=20260328_object_label_toggle";
+import { AnnotationCanvas, lfDebug } from "./annotation_core.js?v=20260330_collaboration_presence_frame_fix";
+import { enhanceAnnotationCanvasWithComments } from "./annotation_comments.js?v=20260330_comment_mentions";
 import { enhanceAnnotationCanvasWithSam2 } from "./annotation_sam2.js?v=20260326_annotation_audit";
-import { enhanceAnnotationCanvasWithCollaboration } from "./annotation_collaboration.js?v=20260326_annotation_audit";
+import { enhanceAnnotationCanvasWithCollaboration } from "./annotation_collaboration.js?v=20260330_collaboration_presence_frame_fix";
 
 function parseJsonScript(scriptId) {
   const el = document.getElementById(scriptId);
@@ -60,6 +60,9 @@ export function bootAnnotationCanvas() {
   enhanceAnnotationCanvasWithComments(ac, {
     initialComments: regionComments,
     currentUser: cfg.currentUser || null,
+    mentionCandidates: Array.isArray(cfg.mentionCandidates)
+      ? cfg.mentionCandidates
+      : [],
   });
   enhanceAnnotationCanvasWithSam2(ac, {
     sam2Enabled: !!cfg.sam2Enabled,

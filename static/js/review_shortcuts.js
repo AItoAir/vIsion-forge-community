@@ -1,3 +1,5 @@
+import { attachMentionAutocomplete } from "./comment_mentions.js?v=20260330_comment_mentions";
+
 function bootReviewShortcuts() {
   const panel = document.getElementById("review-action-panel");
   if (!panel) return;
@@ -29,6 +31,9 @@ function bootReviewShortcuts() {
   const nextUrl = cfg.nextItemUrl || null;
   const prevChangedItemUrl = cfg.prevChangedItemUrl || null;
   const nextChangedItemUrl = cfg.nextChangedItemUrl || null;
+  attachMentionAutocomplete(rejectTextarea, {
+    candidates: Array.isArray(cfg.mentionCandidates) ? cfg.mentionCandidates : [],
+  });
 
   function setRedirectTarget(form, targetUrl) {
     const redirectInput = form?.querySelector('input[name="redirect_to"]');

@@ -31,7 +31,12 @@ def current_request_origin(request: Request) -> str | None:
 
 
 def current_websocket_origin(websocket: WebSocket) -> str | None:
-    return normalize_origin(f"{websocket.url.scheme}://{websocket.url.netloc}")
+    scheme = (websocket.url.scheme or "").strip().lower()
+    if scheme == "ws":
+        scheme = "http"
+    elif scheme == "wss":
+        scheme = "https"
+    return normalize_origin(f"{scheme}://{websocket.url.netloc}")
 
 
 def configured_allowed_origins(*, current_origin: str | None = None) -> set[str]:

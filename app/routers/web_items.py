@@ -31,6 +31,7 @@ from ..models import (
 )
 from ..security import ensure_project_team_access, require_roles
 from ..services.audit import log_audit
+from ..services.comment_mentions import build_project_mention_candidates
 from ..services.media import (
     MediaProbeError,
     build_annotation_media_state,
@@ -226,6 +227,7 @@ def label_item(
     display_media_url = str(
         request.url_for("item_media", item_id=item.id, variant=display_media_variant)
     )
+    mention_candidates = build_project_mention_candidates(db, project)
 
     return templates.TemplateResponse(
         request=request,
@@ -239,6 +241,7 @@ def label_item(
             "annotations": annotations,
             "region_comments": region_comments,
             "current_user": current_user,
+            "mention_candidates": mention_candidates,
             "prev_item_id": prev_item_id,
             "next_item_id": next_item_id,
             "display_media_url": display_media_url,

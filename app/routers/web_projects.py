@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from collections import defaultdict
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request, Form
@@ -11,7 +12,9 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import (
+    Annotation,
     Item,
+    ItemKind,
     ItemStatus,
     LabelClass,
     LabelGeometryKind,
@@ -42,6 +45,8 @@ DEFAULT_LABEL_COLORS = [
     "#d946ef",
     "#ec4899",
 ]
+
+ITEM_LABEL_SUMMARY_PREVIEW_LIMIT = 3
 
 
 def _pick_default_label_color(label_classes: list[LabelClass]) -> str:
@@ -101,6 +106,270 @@ def _normalize_label_presets(
         "default_box_w": box_w,
         "default_box_h": box_h,
         "default_propagation_frames": propagation_frames,
+    }
+
+
+def _normalize_item_search_query(raw_value: str | None) -> str:
+    return (raw_value or "").strip()
+
+
+def _parse_item_kind_filter(raw_value: str | None) -> ItemKind | None:
+    value = (raw_value or "").strip().lower()
+    if not value:
+        return None
+    try:
+        return ItemKind(value)
+    except ValueError:
+        return None
+
+
+def _parse_item_status_filter(raw_value: str | None) -> ItemStatus | None:
+    value = (raw_value or "").strip().lower()
+    if not value:
+        return None
+    try:
+        return ItemStatus(value)
+    except ValueError:
+        return None
+
+
+def _parse_label_class_filter(raw_value: str | None) -> int | None:
+    value = (raw_value or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _load_project_label_classes(db: Session, project_id: int) -> list[LabelClass]:
+    return (
+        db.execute(
+            select(LabelClass)
+            .where(LabelClass.project_id == project_id)
+            .order_by(LabelClass.name.asc(), LabelClass.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+
+
+def _resolve_project_label_filter(
+    label_class_id: int | None,
+    project_label_classes: list[LabelClass],
+) -> LabelClass | None:
+    if label_class_id is None:
+        return None
+
+    for label_class in project_label_classes:
+        if label_class.id == label_class_id:
+            return label_class
+    return None
+
+
+def _annotation_frame_span(
+    item_kind: ItemKind,
+    frame_index: int | None,
+    propagation_frames: int | None,
+) -> tuple[int, int]:
+    if item_kind == ItemKind.video and frame_index is not None:
+        extra_frames = max(0, propagation_frames or 0)
+        return frame_index, frame_index + extra_frames
+
+    start_frame = frame_index if frame_index is not None else 0
+    return start_frame, start_frame
+
+
+def _count_covered_frames(intervals: list[tuple[int, int]]) -> int:
+    if not intervals:
+        return 0
+
+    sorted_intervals = sorted(intervals)
+    current_start, current_end = sorted_intervals[0]
+    covered_frames = 0
+
+    for next_start, next_end in sorted_intervals[1:]:
+        if next_start <= current_end + 1:
+            current_end = max(current_end, next_end)
+            continue
+
+        covered_frames += current_end - current_start + 1
+        current_start, current_end = next_start, next_end
+
+    covered_frames += current_end - current_start + 1
+    return covered_frames
+
+
+def _build_item_label_summaries(
+    items: list[Item],
+    annotation_rows: list[tuple[int, int, str, str | None, int | None, int | None]],
+) -> dict[int, dict[str, object]]:
+    item_kinds = {item.id: item.kind for item in items}
+    grouped_stats: dict[int, dict[int, dict[str, object]]] = defaultdict(dict)
+
+    for (
+        item_id,
+        label_class_id,
+        label_name,
+        color_hex,
+        frame_index,
+        propagation_frames,
+    ) in annotation_rows:
+        item_kind = item_kinds.get(item_id, ItemKind.image)
+        start_frame, end_frame = _annotation_frame_span(
+            item_kind,
+            frame_index,
+            propagation_frames,
+        )
+        label_stats = grouped_stats[item_id].setdefault(
+            label_class_id,
+            {
+                "id": label_class_id,
+                "name": label_name,
+                "color_hex": color_hex or "#6c757d",
+                "object_count": 0,
+                "frame_intervals": [],
+            },
+        )
+        label_stats["object_count"] += end_frame - start_frame + 1
+        label_stats["frame_intervals"].append((start_frame, end_frame))
+
+    summaries: dict[int, dict[str, object]] = {}
+    for item in items:
+        labels: list[dict[str, object]] = []
+        for stats in grouped_stats.get(item.id, {}).values():
+            frame_intervals = stats.pop("frame_intervals")
+            labels.append(
+                {
+                    "id": stats["id"],
+                    "name": stats["name"],
+                    "color_hex": stats["color_hex"],
+                    "object_count": stats["object_count"],
+                    "frame_count": _count_covered_frames(frame_intervals),
+                }
+            )
+
+        labels.sort(key=lambda entry: (str(entry["name"]).lower(), int(entry["id"])))
+        summaries[item.id] = {
+            "labels": labels,
+            "preview_labels": labels[:ITEM_LABEL_SUMMARY_PREVIEW_LIMIT],
+            "hidden_labels": labels[ITEM_LABEL_SUMMARY_PREVIEW_LIMIT:],
+            "hidden_count": max(0, len(labels) - ITEM_LABEL_SUMMARY_PREVIEW_LIMIT),
+        }
+
+    return summaries
+
+
+def _load_item_label_summaries(
+    db: Session,
+    items: list[Item],
+) -> dict[int, dict[str, object]]:
+    item_ids = [item.id for item in items]
+    if not item_ids:
+        return {}
+
+    annotation_rows = db.execute(
+        select(
+            Annotation.item_id,
+            Annotation.label_class_id,
+            LabelClass.name,
+            LabelClass.color_hex,
+            Annotation.frame_index,
+            Annotation.propagation_frames,
+        )
+        .join(LabelClass, LabelClass.id == Annotation.label_class_id)
+        .where(Annotation.item_id.in_(item_ids))
+        .order_by(
+            Annotation.item_id.asc(),
+            LabelClass.name.asc(),
+            Annotation.frame_index.asc(),
+            Annotation.id.asc(),
+        )
+    ).all()
+
+    return _build_item_label_summaries(items, list(annotation_rows))
+
+
+def _load_project_items(
+    db: Session,
+    *,
+    project_id: int,
+    query_text: str = "",
+    kind: ItemKind | None = None,
+    status: ItemStatus | None = None,
+    label_class_id: int | None = None,
+) -> list[Item]:
+    stmt = select(Item).where(Item.project_id == project_id)
+
+    if query_text:
+        stmt = stmt.where(Item.path.ilike(f"%{query_text}%"))
+    if kind is not None:
+        stmt = stmt.where(Item.kind == kind)
+    if status is not None:
+        stmt = stmt.where(Item.status == status)
+    if label_class_id is not None:
+        stmt = stmt.where(Item.annotations.any(Annotation.label_class_id == label_class_id))
+
+    return db.execute(stmt.order_by(Item.id.asc())).scalars().all()
+
+
+def _build_project_items_context(
+    *,
+    request: Request,
+    project: Project,
+    db: Session,
+    current_user,
+    progress: float | None,
+    query_text: str = "",
+    kind: ItemKind | None = None,
+    status: ItemStatus | None = None,
+    label_class_id: int | None = None,
+) -> dict[str, object]:
+    project_label_classes = _load_project_label_classes(db, project.id)
+    selected_label_class = _resolve_project_label_filter(
+        label_class_id, project_label_classes
+    )
+    effective_label_class_id = (
+        selected_label_class.id if selected_label_class is not None else None
+    )
+    normalized_query_text = _normalize_item_search_query(query_text)
+    items = _load_project_items(
+        db,
+        project_id=project.id,
+        query_text=normalized_query_text,
+        kind=kind,
+        status=status,
+        label_class_id=effective_label_class_id,
+    )
+
+    total_item_count = len(project.items)
+    filtered_item_count = len(items)
+    filters_applied = bool(
+        normalized_query_text or kind is not None or status is not None or effective_label_class_id is not None
+    )
+
+    return {
+        "request": request,
+        "project": project,
+        "items": items,
+        "item_label_summaries": _load_item_label_summaries(db, items),
+        "progress": progress,
+        "status_filter": status,
+        "storage_budget": labeling_proxy_storage_summary_payload(),
+        "current_user": current_user,
+        "project_label_classes": project_label_classes,
+        "selected_label_class": selected_label_class,
+        "filtered_item_count": filtered_item_count,
+        "total_item_count": total_item_count,
+        "filters_applied": filters_applied,
+        "filter_state": {
+            "query": normalized_query_text,
+            "kind": kind.value if kind is not None else "",
+            "status": status.value if status is not None else "",
+            "label_class_id": effective_label_class_id,
+        },
     }
 
 
@@ -353,6 +622,10 @@ def create_project(
 def project_detail(
     request: Request,
     project_id: int,
+    q: str | None = None,
+    kind: str | None = None,
+    status: str | None = None,
+    label_class_id: str | None = None,
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(UserRole.annotator, UserRole.reviewer, UserRole.project_admin)),
 ):
@@ -369,15 +642,17 @@ def project_detail(
     return templates.TemplateResponse(
         request=request,
         name="items_list.html",
-        context={
-            "request": request,
-            "project": project,
-            "items": project.items,
-            "progress": progress,
-            "status_filter": None,
-            "storage_budget": labeling_proxy_storage_summary_payload(),
-            "current_user": current_user,
-        },
+        context=_build_project_items_context(
+            request=request,
+            project=project,
+            db=db,
+            current_user=current_user,
+            progress=progress,
+            query_text=q,
+            kind=_parse_item_kind_filter(kind),
+            status=_parse_item_status_filter(status),
+            label_class_id=_parse_label_class_filter(label_class_id),
+        ),
     )
 
 
@@ -389,7 +664,10 @@ def project_detail(
 def project_items(
     request: Request,
     project_id: int,
-    status: ItemStatus | None = None,
+    q: str | None = None,
+    kind: str | None = None,
+    status: str | None = None,
+    label_class_id: str | None = None,
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(UserRole.annotator, UserRole.reviewer, UserRole.project_admin)),
 ):
@@ -399,21 +677,18 @@ def project_items(
 
     ensure_project_team_access(project, current_user)
 
-    stmt = select(Item).where(Item.project_id == project_id)
-    if status:
-        stmt = stmt.where(Item.status == status)
-
-    items = db.execute(stmt.order_by(Item.id.asc())).scalars().all()
     return templates.TemplateResponse(
         request=request,
         name="items_list.html",
-        context={
-            "request": request,
-            "project": project,
-            "items": items,
-            "progress": None,
-            "status_filter": status,
-            "storage_budget": labeling_proxy_storage_summary_payload(),
-            "current_user": current_user,
-        },
+        context=_build_project_items_context(
+            request=request,
+            project=project,
+            db=db,
+            current_user=current_user,
+            progress=None,
+            query_text=q,
+            kind=_parse_item_kind_filter(kind),
+            status=_parse_item_status_filter(status),
+            label_class_id=_parse_label_class_filter(label_class_id),
+        ),
     )

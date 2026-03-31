@@ -351,6 +351,28 @@ function compareAnnotationHits(left, right, activeAnnotation) {
   return (right?.index ?? -1) - (left?.index ?? -1);
 }
 
+function findLastValueIndexAtOrBefore(sortedValues, target) {
+  if (!Array.isArray(sortedValues) || !sortedValues.length) {
+    return -1;
+  }
+
+  let low = 0;
+  let high = sortedValues.length - 1;
+  let result = -1;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (sortedValues[mid] <= target) {
+      result = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return result;
+}
+
 function lerpPolygonPoints(startPoints, endPoints, ratio) {
   if (
     !Array.isArray(startPoints) ||
@@ -872,6 +894,11 @@ export class AnnotationCanvas {
     this.lastSavedSparseState = new Map();
     this.renderQueued = false;
     this.renderQueuedWithList = false;
+    this.deferredFrameUiRefreshTimer = null;
+    this.annotationStoreVersion = 0;
+    this.annotationDataIndex = null;
+    this.validationCacheVersion = -1;
+    this.timelineAnnotationsRenderKey = null;
 
     this.frameAnnotations = new Map();
     this.annotations = [];
@@ -897,6 +924,8 @@ export class AnnotationCanvas {
     this.handleRadius = 6;
 
     this.pixelRatio = window.devicePixelRatio || 1;
+    this.passiveResizeHandle = null;
+    this.passiveResizeObserver = null;
 
     // Viewport / zoom / pan state
     this.imageWidth = null;
@@ -948,6 +977,11 @@ export class AnnotationCanvas {
       endFrame: null,
     };
     this.manualKeyframesByTrack = new Map();
+    this.manualKeyframesVersion = 0;
+    this.trackKeyframesCache = new Map();
+    this.trackKeyframesCacheAnnotationVersion = -1;
+    this.trackKeyframesCacheManualVersion = -1;
+    this.interpolationPanelRenderKey = null;
 
     this.currentDrawingAnnotation = null;
     this.nextTrackId = 1;
@@ -988,6 +1022,13 @@ export class AnnotationCanvas {
       videoHeight: this.mediaEl.videoHeight,
       src: this.mediaEl.currentSrc || this.mediaEl.src,
     });
+  }
+
+  getResizeMeasurementElement() {
+    if (this.kind === "video" && !this.useCanvasVideo && this.stageEl) {
+      return this.stageEl;
+    }
+    return this.mediaEl;
   }
 
   init(initialAnnotations) {
@@ -1063,6 +1104,10 @@ export class AnnotationCanvas {
   }
 
   requestRedraw(withList = true) {
+    if (withList && this.deferredFrameUiRefreshTimer) {
+      window.clearTimeout(this.deferredFrameUiRefreshTimer);
+      this.deferredFrameUiRefreshTimer = null;
+    }
     this.renderQueuedWithList = this.renderQueuedWithList || !!withList;
     if (this.renderQueued) {
       return;
@@ -1075,6 +1120,270 @@ export class AnnotationCanvas {
       this.renderQueuedWithList = false;
       this.redraw(nextWithList);
     });
+  }
+
+  scheduleDeferredFrameUiRefresh(delayMs = 120) {
+    if (this.deferredFrameUiRefreshTimer) {
+      window.clearTimeout(this.deferredFrameUiRefreshTimer);
+    }
+
+    this.deferredFrameUiRefreshTimer = window.setTimeout(() => {
+      this.deferredFrameUiRefreshTimer = null;
+      this.requestRedraw(true);
+    }, delayMs);
+  }
+
+  markAnnotationStoreDirty() {
+    this.annotationStoreVersion += 1;
+    this.annotationDataIndex = null;
+    this.validationCacheVersion = -1;
+    this.timelineAnnotationsRenderKey = null;
+    this.trackKeyframesCache.clear();
+    this.trackKeyframesCacheAnnotationVersion = this.annotationStoreVersion;
+    this.interpolationPanelRenderKey = null;
+  }
+
+  markManualKeyframesDirty() {
+    this.manualKeyframesVersion += 1;
+    this.timelineAnnotationsRenderKey = null;
+    this.trackKeyframesCache.clear();
+    this.trackKeyframesCacheManualVersion = this.manualKeyframesVersion;
+    this.interpolationPanelRenderKey = null;
+  }
+
+  buildTrackReviewChangeState(trackAnnotations) {
+    let reviewChangeState = null;
+
+    trackAnnotations.forEach((annotation) => {
+      const nextState = getReviewChangeState(annotation);
+      if (nextState === "new") {
+        reviewChangeState = "new";
+        return;
+      }
+      if (nextState === "changed" && reviewChangeState !== "new") {
+        reviewChangeState = "changed";
+        return;
+      }
+      if (!reviewChangeState && nextState === "unchanged") {
+        reviewChangeState = "unchanged";
+      }
+    });
+
+    return reviewChangeState;
+  }
+
+  buildTrackAuditMetadata(trackAnnotations) {
+    if (!Array.isArray(trackAnnotations) || !trackAnnotations.length) {
+      return null;
+    }
+
+    let createdSource = null;
+    let createdSortValue = Number.MAX_SAFE_INTEGER;
+    let updatedSource = null;
+    let updatedSortValue = Number.MIN_SAFE_INTEGER;
+
+    trackAnnotations.forEach((annotation) => {
+      const nextCreatedSortValue = getAuditTimestampSortValue(
+        annotation.created_at,
+        Number.MAX_SAFE_INTEGER
+      );
+      if (!createdSource || nextCreatedSortValue < createdSortValue) {
+        createdSource = annotation;
+        createdSortValue = nextCreatedSortValue;
+      }
+
+      const nextUpdatedSortValue = getAuditTimestampSortValue(
+        annotation.updated_at,
+        Number.MIN_SAFE_INTEGER
+      );
+      if (!updatedSource || nextUpdatedSortValue > updatedSortValue) {
+        updatedSource = annotation;
+        updatedSortValue = nextUpdatedSortValue;
+      }
+    });
+
+    const fallbackSource = createdSource || updatedSource;
+    const latestSource = updatedSource || fallbackSource;
+    if (!fallbackSource || !latestSource) {
+      return null;
+    }
+
+    return {
+      created_at: fallbackSource.created_at ?? null,
+      created_by: fallbackSource.created_by ?? null,
+      created_by_user: cloneAuditUser(fallbackSource.created_by_user),
+      updated_at: latestSource.updated_at ?? fallbackSource.updated_at ?? null,
+      updated_by:
+        latestSource.updated_by ??
+        fallbackSource.updated_by ??
+        fallbackSource.created_by ??
+        null,
+      updated_by_user:
+        cloneAuditUser(latestSource.updated_by_user) ||
+        cloneAuditUser(fallbackSource.updated_by_user) ||
+        cloneAuditUser(fallbackSource.created_by_user),
+    };
+  }
+
+  buildTrackGapsFromOrderedAnnotations(trackAnnotations) {
+    if (!Array.isArray(trackAnnotations) || trackAnnotations.length <= 1) {
+      return [];
+    }
+
+    const gaps = [];
+    let previousEndFrame = null;
+
+    trackAnnotations.forEach((annotation) => {
+      const startFrame = annotation.frame_index ?? 0;
+      const endFrame = startFrame + Math.max(0, annotation.propagation_frames ?? 0);
+
+      if (
+        Number.isInteger(previousEndFrame) &&
+        startFrame > previousEndFrame + 1
+      ) {
+        gaps.push({
+          startFrame: previousEndFrame + 1,
+          endFrame: startFrame - 1,
+        });
+      }
+
+      previousEndFrame =
+        previousEndFrame == null ? endFrame : Math.max(previousEndFrame, endFrame);
+    });
+
+    return gaps;
+  }
+
+  getAnnotationStoreIndex() {
+    if (
+      this.annotationDataIndex &&
+      this.annotationDataIndex.version === this.annotationStoreVersion
+    ) {
+      return this.annotationDataIndex;
+    }
+
+    const sparseAnnotations = [];
+    const singleAnnotations = [];
+    const trackAnnotationsById = new Map();
+
+    for (const bucket of this.frameAnnotations.values()) {
+      if (!bucket || !bucket.length) {
+        continue;
+      }
+
+      for (const annotation of bucket) {
+        sparseAnnotations.push(annotation);
+        if (annotation.track_id == null) {
+          singleAnnotations.push(annotation);
+          continue;
+        }
+
+        const trackBucket = trackAnnotationsById.get(annotation.track_id) || [];
+        trackBucket.push(annotation);
+        trackAnnotationsById.set(annotation.track_id, trackBucket);
+      }
+    }
+
+    sparseAnnotations.sort((left, right) => {
+      const leftFrame = left.frame_index ?? -1;
+      const rightFrame = right.frame_index ?? -1;
+      if (leftFrame !== rightFrame) {
+        return leftFrame - rightFrame;
+      }
+      const leftTrackId = left.track_id ?? Number.MAX_SAFE_INTEGER;
+      const rightTrackId = right.track_id ?? Number.MAX_SAFE_INTEGER;
+      if (leftTrackId !== rightTrackId) {
+        return leftTrackId - rightTrackId;
+      }
+      return (left.label_class_id ?? 0) - (right.label_class_id ?? 0);
+    });
+
+    singleAnnotations.sort((left, right) => {
+      const leftFrame = left.frame_index ?? -1;
+      const rightFrame = right.frame_index ?? -1;
+      if (leftFrame !== rightFrame) {
+        return leftFrame - rightFrame;
+      }
+      return (left.label_class_id ?? 0) - (right.label_class_id ?? 0);
+    });
+
+    const sortedTrackIds = Array.from(trackAnnotationsById.keys()).sort(
+      (left, right) => left - right
+    );
+    const trackMap = new Map();
+    const trackDetails = new Map();
+
+    sortedTrackIds.forEach((trackId) => {
+      const orderedAnnotations = (trackAnnotationsById.get(trackId) || []).sort(
+        (left, right) => (left.frame_index ?? 0) - (right.frame_index ?? 0)
+      );
+      const frameStarts = orderedAnnotations.map(
+        (annotation) => annotation.frame_index ?? 0
+      );
+      const representativeAnnotation = orderedAnnotations[0] || null;
+      const startFrame = representativeAnnotation?.frame_index ?? 0;
+      const endFrame = orderedAnnotations.reduce((maxFrame, annotation) => {
+        const annotationStartFrame = annotation.frame_index ?? 0;
+        const annotationEndFrame =
+          annotationStartFrame + Math.max(0, annotation.propagation_frames ?? 0);
+        return Math.max(maxFrame, annotationEndFrame);
+      }, startFrame);
+
+      trackMap.set(trackId, {
+        trackId,
+        label_class_id: representativeAnnotation?.label_class_id ?? null,
+        startFrame,
+        endFrame,
+      });
+      trackDetails.set(trackId, {
+        annotations: orderedAnnotations,
+        frameStarts,
+        representativeAnnotation,
+        reviewChangeState: this.buildTrackReviewChangeState(orderedAnnotations),
+        auditMetadata: this.buildTrackAuditMetadata(orderedAnnotations),
+        gaps: this.buildTrackGapsFromOrderedAnnotations(orderedAnnotations),
+      });
+    });
+
+    this.annotationDataIndex = {
+      version: this.annotationStoreVersion,
+      all: sparseAnnotations,
+      singleAnnotations,
+      trackMap,
+      trackDetails,
+      sortedTrackIds,
+    };
+
+    return this.annotationDataIndex;
+  }
+
+  findTrackSparseAnnotationCoveringFrame(trackId, frameIndex) {
+    const trackDetail = this.getAnnotationStoreIndex().trackDetails.get(trackId);
+    if (!trackDetail || !trackDetail.annotations.length) {
+      return null;
+    }
+
+    const annotationIndex = findLastValueIndexAtOrBefore(
+      trackDetail.frameStarts,
+      frameIndex
+    );
+    if (annotationIndex < 0) {
+      return null;
+    }
+
+    const annotation = trackDetail.annotations[annotationIndex];
+    const startFrame = annotation.frame_index ?? 0;
+    const endFrame = startFrame + Math.max(0, annotation.propagation_frames ?? 0);
+    return frameIndex <= endFrame ? annotation : null;
+  }
+
+  getValidationIssuesSnapshot() {
+    if (this.validationCacheVersion !== this.annotationStoreVersion) {
+      this.validationIssues = this.computeValidationIssues();
+      this.validationCacheVersion = this.annotationStoreVersion;
+    }
+
+    return this.validationIssues;
   }
 
   applyMediaTransform() {
@@ -1420,6 +1729,7 @@ export class AnnotationCanvas {
     this.manualKeyframesByTrack = this.restoreManualKeyframesFromHistory(
       state.manual_keyframes
     );
+    this.markManualKeyframesDirty();
     this.persistManualKeyframesToStorage();
     const frameIndex = Math.max(0, Math.trunc(Number(state.current_frame_index ?? 0)));
     if (this.kind === "video") {
@@ -1813,7 +2123,7 @@ export class AnnotationCanvas {
       return;
     }
 
-    this.validationIssues = this.computeValidationIssues();
+    this.validationIssues = this.getValidationIssuesSnapshot();
     if (!this.validationIssues.length) {
       this.validationCursor = -1;
     } else if (
@@ -2028,15 +2338,20 @@ export class AnnotationCanvas {
     const keyframes = this.getTrackKeyframes(trackId);
     if (!keyframes.length) return null;
 
+    const anchorIndex = findLastValueIndexAtOrBefore(
+      keyframes,
+      this.currentFrameIndex
+    );
+
     if (direction < 0) {
-      return (
-        [...keyframes]
-          .reverse()
-          .find((frameIndex) => frameIndex < this.currentFrameIndex) ?? null
-      );
+      const currentMatchesAnchor =
+        anchorIndex >= 0 && keyframes[anchorIndex] === this.currentFrameIndex;
+      const previousIndex = currentMatchesAnchor ? anchorIndex - 1 : anchorIndex;
+      return previousIndex >= 0 ? keyframes[previousIndex] : null;
     }
 
-    return keyframes.find((frameIndex) => frameIndex > this.currentFrameIndex) ?? null;
+    const nextIndex = anchorIndex + 1;
+    return nextIndex < keyframes.length ? keyframes[nextIndex] : null;
   }
 
   jumpToActiveTrackKeyframe(direction) {
@@ -2232,6 +2547,7 @@ export class AnnotationCanvas {
     } else {
       this.clearTrackSparseAnnotations(sourceTrackId);
       this.manualKeyframesByTrack.delete(sourceTrackId);
+      this.markManualKeyframesDirty();
       this.trackViewStateById.delete(sourceTrackId);
       if (this.soloTrackId === sourceTrackId) {
         this.soloTrackId = null;
@@ -2587,6 +2903,7 @@ export class AnnotationCanvas {
 
     this.clearTrackSparseAnnotations(sourceTrackId);
     this.manualKeyframesByTrack.delete(sourceTrackId);
+    this.markManualKeyframesDirty();
     this.trackViewStateById.delete(sourceTrackId);
     if (this.soloTrackId === sourceTrackId) {
       this.soloTrackId = null;
@@ -3170,78 +3487,27 @@ export class AnnotationCanvas {
 
   getTrackGaps(trackId) {
     if (!Number.isInteger(trackId)) return [];
-    const segments = this.getTrackSegments(trackId).sort((a, b) => a.startFrame - b.startFrame);
-    if (segments.length <= 1) return [];
-    const gaps = [];
-    for (let i = 1; i < segments.length; i += 1) {
-      const prev = segments[i - 1];
-      const cur = segments[i];
-      if (cur.startFrame > prev.endFrame + 1) {
-        gaps.push({ startFrame: prev.endFrame + 1, endFrame: cur.startFrame - 1 });
-      }
-    }
-    return gaps;
+    return this.getAnnotationStoreIndex().trackDetails.get(trackId)?.gaps || [];
   }
 
   getTrackReviewChangeState(trackId) {
     if (!Number.isInteger(trackId)) {
       return null;
     }
-
-    const states = this.getTrackSparseAnnotations(trackId)
-      .map((annotation) => getReviewChangeState(annotation))
-      .filter(Boolean);
-
-    if (states.includes("new")) {
-      return "new";
-    }
-    if (states.includes("changed")) {
-      return "changed";
-    }
-    if (states.includes("unchanged")) {
-      return "unchanged";
-    }
-    return null;
+    return (
+      this.getAnnotationStoreIndex().trackDetails.get(trackId)?.reviewChangeState ||
+      null
+    );
   }
 
   getTrackAuditMetadata(trackId) {
-    const sparseAnnotations = this.getTrackSparseAnnotations(trackId);
-    if (!sparseAnnotations.length) {
+    if (!Number.isInteger(trackId)) {
       return null;
     }
-
-    const sortedByCreated = [...sparseAnnotations].sort(
-      (left, right) =>
-        getAuditTimestampSortValue(left.created_at, Number.MAX_SAFE_INTEGER) -
-        getAuditTimestampSortValue(right.created_at, Number.MAX_SAFE_INTEGER)
+    return (
+      this.getAnnotationStoreIndex().trackDetails.get(trackId)?.auditMetadata ||
+      null
     );
-    const sortedByUpdated = [...sparseAnnotations].sort(
-      (left, right) =>
-        getAuditTimestampSortValue(right.updated_at, Number.MIN_SAFE_INTEGER) -
-        getAuditTimestampSortValue(left.updated_at, Number.MIN_SAFE_INTEGER)
-    );
-
-    const createdSource = sortedByCreated[0] || null;
-    const updatedSource = sortedByUpdated[0] || createdSource;
-    if (!createdSource && !updatedSource) {
-      return null;
-    }
-
-    return {
-      created_at: createdSource?.created_at ?? null,
-      created_by: createdSource?.created_by ?? null,
-      created_by_user: cloneAuditUser(createdSource?.created_by_user),
-      updated_at: updatedSource?.updated_at ?? createdSource?.updated_at ?? null,
-      updated_by:
-        updatedSource?.updated_by ??
-        createdSource?.updated_by ??
-        createdSource?.created_by ??
-        null,
-      updated_by_user:
-        cloneAuditUser(updatedSource?.updated_by_user) ||
-        cloneAuditUser(createdSource?.updated_by_user) ||
-        cloneAuditUser(createdSource?.created_by_user),
-    };
   }
 
   jumpToAdjacentGap(direction) {
@@ -3734,6 +4000,7 @@ export class AnnotationCanvas {
     const bucket = this.frameAnnotations.get(key) || [];
     bucket.push(annotation);
     this.frameAnnotations.set(key, bucket);
+    this.markAnnotationStoreDirty();
   }
 
   removeSparseAnnotation(annotation) {
@@ -3755,21 +4022,19 @@ export class AnnotationCanvas {
     } else {
       this.frameAnnotations.delete(key);
     }
+
+    this.markAnnotationStoreDirty();
   }
 
   getSparseAnnotations() {
-    const all = [];
-    for (const [, bucket] of this.frameAnnotations.entries()) {
-      if (!bucket || !bucket.length) continue;
-      all.push(...bucket);
-    }
-    return all;
+    return this.getAnnotationStoreIndex().all;
   }
 
   getTrackSparseAnnotations(trackId) {
-    return this.getSparseAnnotations()
-      .filter((annotation) => annotation.track_id === trackId)
-      .sort((left, right) => (left.frame_index ?? 0) - (right.frame_index ?? 0));
+    if (!Number.isInteger(trackId)) {
+      return [];
+    }
+    return this.getAnnotationStoreIndex().trackDetails.get(trackId)?.annotations || [];
   }
 
   clearTrackSparseAnnotations(trackId) {
@@ -3785,6 +4050,8 @@ export class AnnotationCanvas {
         this.frameAnnotations.delete(frameKey);
       }
     }
+
+    this.markAnnotationStoreDirty();
   }
 
   createSegment(annotation, startFrame, endFrame, options = {}) {
@@ -3925,22 +4192,10 @@ export class AnnotationCanvas {
   }
 
   findActiveSparseAnnotation(trackId, frameIndex) {
-    let bestMatch = null;
-
-    for (const annotation of this.getTrackSparseAnnotations(trackId)) {
-      const startFrame = annotation.frame_index ?? 0;
-      const endFrame = startFrame + Math.max(0, annotation.propagation_frames ?? 0);
-
-      if (frameIndex < startFrame || frameIndex > endFrame) {
-        continue;
-      }
-
-      if (!bestMatch || startFrame > (bestMatch.frame_index ?? -1)) {
-        bestMatch = annotation;
-      }
+    if (!Number.isInteger(trackId)) {
+      return null;
     }
-
-    return bestMatch;
+    return this.findTrackSparseAnnotationCoveringFrame(trackId, frameIndex);
   }
 
   buildAnnotationsForFrame(frameIndex) {
@@ -3948,10 +4203,30 @@ export class AnnotationCanvas {
       return this.frameAnnotations.get(null) || [];
     }
 
+    const annotationIndex = this.getAnnotationStoreIndex();
     const trackViews = new Map();
     const singleViews = [];
 
-    for (const storedAnnotation of this.getSparseAnnotations()) {
+    for (const trackId of annotationIndex.sortedTrackIds) {
+      const storedAnnotation = this.findTrackSparseAnnotationCoveringFrame(
+        trackId,
+        frameIndex
+      );
+      if (!storedAnnotation) {
+        continue;
+      }
+
+      const startFrame = storedAnnotation.frame_index ?? 0;
+      const endFrame =
+        startFrame + Math.max(0, storedAnnotation.propagation_frames ?? 0);
+      const view = cloneAnnotation(storedAnnotation, frameIndex);
+      view._storedAnnotation = storedAnnotation;
+      view._sparseStartFrame = startFrame;
+      view._sparseEndFrame = endFrame;
+      trackViews.set(trackId, view);
+    }
+
+    for (const storedAnnotation of annotationIndex.singleAnnotations) {
       const startFrame = storedAnnotation.frame_index ?? 0;
       const endFrame =
         startFrame + Math.max(0, storedAnnotation.propagation_frames ?? 0);
@@ -3964,19 +4239,7 @@ export class AnnotationCanvas {
       view._storedAnnotation = storedAnnotation;
       view._sparseStartFrame = startFrame;
       view._sparseEndFrame = endFrame;
-
-      if (storedAnnotation.track_id == null) {
-        singleViews.push(view);
-        continue;
-      }
-
-      const existing = trackViews.get(storedAnnotation.track_id);
-      if (
-        !existing ||
-        (view._sparseStartFrame ?? 0) > (existing._sparseStartFrame ?? -1)
-      ) {
-        trackViews.set(storedAnnotation.track_id, view);
-      }
+      singleViews.push(view);
     }
 
     return [...trackViews.values(), ...singleViews].sort((left, right) => {
@@ -4112,6 +4375,7 @@ export class AnnotationCanvas {
 
     if (!this.getTrackSparseAnnotations(trackId).length) {
       this.manualKeyframesByTrack.delete(trackId);
+      this.markManualKeyframesDirty();
       this.persistManualKeyframesToStorage();
     } else {
       this.removeManualKeyframe(trackId, frameIndex);
@@ -4239,6 +4503,8 @@ export class AnnotationCanvas {
       );
     }
 
+    this.markAnnotationStoreDirty();
+
     this.nextTrackId = 1;
     for (const annotation of this.getSparseAnnotations()) {
       if (annotation.track_id != null && annotation.track_id >= this.nextTrackId) {
@@ -4266,18 +4532,38 @@ export class AnnotationCanvas {
   }
 
 
-  syncCanvasSize(resetView = false) {
-    const measurementEl =
-      this.kind === "video" && !this.useCanvasVideo && this.stageEl
-        ? this.stageEl
-        : this.mediaEl;
-    const rect = measurementEl.getBoundingClientRect();
+  syncCanvasSize(resetView = false, options = {}) {
+    const { withList = true, measurementEl = null } = options;
+    const nextPixelRatio = window.devicePixelRatio || 1;
+    const measurementTarget = measurementEl || this.getResizeMeasurementElement();
+    if (!measurementTarget) {
+      return;
+    }
+    const rect = measurementTarget.getBoundingClientRect();
     const viewportWidth = rect.width;
     const viewportHeight = rect.height;
 
     if (!viewportWidth || !viewportHeight) {
       return;
     }
+
+    const dimensionsUnchanged =
+      Math.abs((this.viewportWidth ?? 0) - viewportWidth) < 0.5 &&
+      Math.abs((this.viewportHeight ?? 0) - viewportHeight) < 0.5 &&
+      Math.abs((this.pixelRatio ?? 1) - nextPixelRatio) < 0.01;
+    if (!resetView && dimensionsUnchanged) {
+      return;
+    }
+
+    this.pixelRatio = nextPixelRatio;
+
+    const previousViewportWidth = this.viewportWidth;
+    const previousViewportHeight = this.viewportHeight;
+    const previousBaseScale = this.baseScale || 1;
+    const previousZoom = this.zoom || 1;
+    const previousScale = previousBaseScale * previousZoom;
+    const previousTranslateX = this.translateX || 0;
+    const previousTranslateY = this.translateY || 0;
 
     this.viewportWidth = viewportWidth;
     this.viewportHeight = viewportHeight;
@@ -4295,10 +4581,12 @@ export class AnnotationCanvas {
     this.imageWidth = naturalWidth;
     this.imageHeight = naturalHeight;
 
+    const scaleX = viewportWidth / (naturalWidth || viewportWidth);
+    const scaleY = viewportHeight / (naturalHeight || viewportHeight);
+    const fittedBaseScale = Math.min(scaleX || 1, scaleY || 1);
+
     if (resetView || !this.baseScale) {
-      const scaleX = viewportWidth / (naturalWidth || viewportWidth);
-      const scaleY = viewportHeight / (naturalHeight || viewportHeight);
-      this.baseScale = Math.min(scaleX || 1, scaleY || 1);
+      this.baseScale = fittedBaseScale;
       this.zoom = 1;
 
       // Center the image in the viewport
@@ -4306,9 +4594,44 @@ export class AnnotationCanvas {
         (viewportWidth - this.imageWidth * this.baseScale) / 2;
       this.translateY =
         (viewportHeight - this.imageHeight * this.baseScale) / 2;
+    } else {
+      const previousCenterX =
+        Number.isFinite(previousViewportWidth) && previousViewportWidth > 0
+          ? previousViewportWidth / 2
+          : viewportWidth / 2;
+      const previousCenterY =
+        Number.isFinite(previousViewportHeight) && previousViewportHeight > 0
+          ? previousViewportHeight / 2
+          : viewportHeight / 2;
+      const focalImageX =
+        previousScale > 0
+          ? (previousCenterX - previousTranslateX) / previousScale
+          : null;
+      const focalImageY =
+        previousScale > 0
+          ? (previousCenterY - previousTranslateY) / previousScale
+          : null;
+
+      this.baseScale = fittedBaseScale;
+      this.zoom = previousZoom;
+
+      const nextScale = this.baseScale * this.zoom;
+      if (
+        Number.isFinite(focalImageX) &&
+        Number.isFinite(focalImageY) &&
+        nextScale > 0
+      ) {
+        this.translateX = viewportWidth / 2 - focalImageX * nextScale;
+        this.translateY = viewportHeight / 2 - focalImageY * nextScale;
+      } else {
+        this.translateX =
+          (viewportWidth - this.imageWidth * this.baseScale) / 2;
+        this.translateY =
+          (viewportHeight - this.imageHeight * this.baseScale) / 2;
+      }
     }
 
-    this.requestRedraw();
+    this.requestRedraw(withList);
   }
 
   resetView() {
@@ -4322,6 +4645,37 @@ export class AnnotationCanvas {
     this.currentDrawingAnnotation = null;
     this.canvas.style.cursor = "crosshair";
     this.syncCanvasSize(true);
+  }
+
+  schedulePassiveResizeSync() {
+    if (this.passiveResizeHandle != null) {
+      return;
+    }
+
+    this.passiveResizeHandle = window.requestAnimationFrame(() => {
+      this.passiveResizeHandle = null;
+      this.syncCanvasSize(false, { withList: false });
+    });
+  }
+
+  observePassiveResize() {
+    if (this.passiveResizeObserver || typeof ResizeObserver !== "function") {
+      return;
+    }
+
+    const observedTargets = [this.stageEl, this.mediaEl].filter(
+      (target, index, allTargets) =>
+        !!target && allTargets.indexOf(target) === index
+    );
+
+    if (!observedTargets.length) {
+      return;
+    }
+
+    this.passiveResizeObserver = new ResizeObserver(() => {
+      this.schedulePassiveResizeSync();
+    });
+    observedTargets.forEach((target) => this.passiveResizeObserver.observe(target));
   }
 
   attachEvents() {
@@ -4344,7 +4698,8 @@ export class AnnotationCanvas {
     }
     window.addEventListener("mousemove", (e) => this.onMouseMove(e));
     window.addEventListener("mouseup", (e) => this.onMouseUp(e));
-    window.addEventListener("resize", () => this.syncCanvasSize(true));
+    window.addEventListener("resize", () => this.schedulePassiveResizeSync());
+    this.observePassiveResize();
 
     document.addEventListener("keydown", (e) => {
       if (!this.readOnly && this.isPolygonDrawing) {
@@ -4775,7 +5130,7 @@ export class AnnotationCanvas {
         this.stopRenderLoop();
         this.syncPlaybackTerminalFrame();
         this.switchToCanvasVideoIfReady();
-        this.requestRedraw();
+        this.requestRedraw(false);
       });
 
       const btnTogglePlay = document.getElementById("btn-toggle-play");
@@ -4952,6 +5307,18 @@ export class AnnotationCanvas {
     }
 
     const layer = this.timelineAnnotationLayerEl;
+    const renderKey = [
+      this.totalFrames,
+      this.annotationStoreVersion,
+      this.manualKeyframesVersion,
+    ].join("|");
+    if (this.timelineAnnotationsRenderKey === renderKey) {
+      this.updateTrackTimelineActiveState();
+      this.updateInterpolationPanel();
+      return;
+    }
+    this.timelineAnnotationsRenderKey = renderKey;
+
     layer.innerHTML = "";
 
     const markerFrames = new Set();
@@ -5079,44 +5446,21 @@ export class AnnotationCanvas {
 
 
   computeTrackMap() {
-    const tracks = new Map();
     if (this.kind !== "video") {
-      return tracks;
+      return new Map();
     }
-
-    for (const annotation of this.getSparseAnnotations()) {
-      if (annotation.track_id == null) continue;
-
-      const startFrame = annotation.frame_index ?? 0;
-      const endFrame =
-        startFrame + Math.max(0, annotation.propagation_frames ?? 0);
-
-      const existing = tracks.get(annotation.track_id);
-      if (!existing) {
-        tracks.set(annotation.track_id, {
-          trackId: annotation.track_id,
-          label_class_id: annotation.label_class_id,
-          startFrame,
-          endFrame,
-        });
-        continue;
-      }
-
-      existing.startFrame = Math.min(existing.startFrame, startFrame);
-      existing.endFrame = Math.max(existing.endFrame, endFrame);
-    }
-
-    return tracks;
+    return this.getAnnotationStoreIndex().trackMap;
   }
 
 
   getRepresentativeAnnotationForTrack(trackId) {
     if (this.kind !== "video") return null;
 
-    const keyframes = this.getTrackSparseAnnotations(trackId);
-    if (!keyframes.length) return null;
+    const annotation =
+      this.getAnnotationStoreIndex().trackDetails.get(trackId)
+        ?.representativeAnnotation || null;
+    if (!annotation) return null;
 
-    const annotation = keyframes[0];
     return cloneAnnotation(annotation, annotation.frame_index ?? 0);
   }
 
@@ -5331,6 +5675,13 @@ export class AnnotationCanvas {
       this.pendingMergeTargetTrackId = null;
     }
 
+    const isSameTrack = this.activeTrackId === trackId;
+    const isSameInterpolationTrack =
+      this.interpolationSelection.trackId === (trackId ?? null);
+    if (isSameTrack && isSameInterpolationTrack) {
+      return;
+    }
+
     this.activeTrackId = trackId;
 
     if (trackId == null) {
@@ -5394,15 +5745,9 @@ export class AnnotationCanvas {
   buildDefaultManualKeyframeMap() {
     const nextMap = new Map();
 
-    for (const annotation of this.getSparseAnnotations()) {
-      if (annotation.track_id == null || annotation.frame_index == null) {
-        continue;
-      }
-
-      const set = nextMap.get(annotation.track_id) || new Set();
-      set.add(annotation.frame_index);
-      nextMap.set(annotation.track_id, set);
-    }
+    this.getAnnotationStoreIndex().trackDetails.forEach((trackDetail, trackId) => {
+      nextMap.set(trackId, new Set(trackDetail.frameStarts));
+    });
 
     return nextMap;
   }
@@ -5410,6 +5755,7 @@ export class AnnotationCanvas {
   loadManualKeyframesFromStorage(defaultMap) {
     if (typeof window === "undefined" || !window.localStorage) {
       this.manualKeyframesByTrack = defaultMap;
+      this.markManualKeyframesDirty();
       return;
     }
 
@@ -5423,6 +5769,7 @@ export class AnnotationCanvas {
 
     if (!parsed || typeof parsed !== "object") {
       this.manualKeyframesByTrack = defaultMap;
+      this.markManualKeyframesDirty();
       return;
     }
 
@@ -5449,6 +5796,7 @@ export class AnnotationCanvas {
     }
 
     this.manualKeyframesByTrack = hydrated;
+    this.markManualKeyframesDirty();
     this.persistManualKeyframesToStorage();
   }
 
@@ -5472,7 +5820,30 @@ export class AnnotationCanvas {
     }
   }
 
+  getTrackKeyframesCacheKey(trackId) {
+    return `${trackId}`;
+  }
+
   getTrackKeyframes(trackId) {
+    if (!Number.isInteger(trackId)) {
+      return [];
+    }
+
+    if (
+      this.trackKeyframesCacheAnnotationVersion !== this.annotationStoreVersion ||
+      this.trackKeyframesCacheManualVersion !== this.manualKeyframesVersion
+    ) {
+      this.trackKeyframesCache.clear();
+      this.trackKeyframesCacheAnnotationVersion = this.annotationStoreVersion;
+      this.trackKeyframesCacheManualVersion = this.manualKeyframesVersion;
+    }
+
+    const cacheKey = this.getTrackKeyframesCacheKey(trackId);
+    const cached = this.trackKeyframesCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const trackRange = this.getTrackFrameRange(trackId);
     const storedFrames = this.manualKeyframesByTrack.get(trackId);
     const fallbackFrames = this.getTrackSparseAnnotations(trackId).map(
@@ -5490,9 +5861,12 @@ export class AnnotationCanvas {
       .sort((left, right) => left - right);
 
     if (!normalized.length && trackRange) {
-      return [trackRange.start];
+      const fallback = [trackRange.start];
+      this.trackKeyframesCache.set(cacheKey, fallback);
+      return fallback;
     }
 
+    this.trackKeyframesCache.set(cacheKey, normalized);
     return normalized;
   }
 
@@ -5510,6 +5884,7 @@ export class AnnotationCanvas {
       this.manualKeyframesByTrack.set(trackId, new Set(normalized));
     }
 
+    this.markManualKeyframesDirty();
     this.persistManualKeyframesToStorage();
   }
 
@@ -5550,6 +5925,20 @@ export class AnnotationCanvas {
         );
       }
     }
+  }
+
+  buildInterpolationPanelRenderKey(trackId, trackRange, keyframeCount) {
+    return [
+      trackId ?? "none",
+      trackRange?.start ?? "na",
+      trackRange?.end ?? "na",
+      trackId == null ? "na" : this.currentFrameIndex,
+      trackId == null ? "na" : this.interpolationSelection.startFrame ?? "na",
+      trackId == null ? "na" : this.interpolationSelection.endFrame ?? "na",
+      this.annotationStoreVersion,
+      this.manualKeyframesVersion,
+      keyframeCount,
+    ].join("|");
   }
 
   syncTrackKeyframesToRange(trackId, startFrame, endFrame) {
@@ -5848,13 +6237,19 @@ export class AnnotationCanvas {
     const trackRange = trackId != null ? this.getTrackFrameRange(trackId) : null;
 
     if (trackId == null || !trackRange) {
+      const renderKey = this.buildInterpolationPanelRenderKey(null, null, 0);
+      if (this.interpolationPanelRenderKey === renderKey) {
+        return;
+      }
+      this.interpolationPanelRenderKey = renderKey;
+
       if (this.interpolationTrackLabelEl) {
         this.interpolationTrackLabelEl.textContent =
           "Select an object on the canvas or object timeline.";
       }
       if (this.interpolationKeyframesEl) {
         this.interpolationKeyframesEl.innerHTML =
-          '<div class="small text-secondary">No object selected.</div>';
+          '<div class="small text-secondary">No object selected. Use the sidebar keyframe buttons or the object timeline to move between keyframes.</div>';
       }
       if (this.interpolationStartFrameEl) {
         this.interpolationStartFrameEl.textContent = "–";
@@ -5892,20 +6287,79 @@ export class AnnotationCanvas {
       this.interpolationSelection.endFrame = null;
     }
 
+    const keyframes = this.getTrackKeyframes(trackId);
+    const keyframeCount = keyframes.length;
+    const anchorIndex = findLastValueIndexAtOrBefore(
+      keyframes,
+      this.currentFrameIndex
+    );
+    const currentIsKeyframe =
+      anchorIndex >= 0 && keyframes[anchorIndex] === this.currentFrameIndex;
+    const prevKeyframe = this.getAdjacentTrackKeyframe(trackId, -1);
+    const nextKeyframe = this.getAdjacentTrackKeyframe(trackId, 1);
+    const renderKey = this.buildInterpolationPanelRenderKey(
+      trackId,
+      trackRange,
+      keyframeCount
+    );
+    if (this.interpolationPanelRenderKey === renderKey) {
+      return;
+    }
+    this.interpolationPanelRenderKey = renderKey;
+
     if (this.interpolationTrackLabelEl) {
       this.interpolationTrackLabelEl.textContent =
         `Active object: Obj ${trackId} · Range ${trackRange.start + 1}-${trackRange.end + 1}`;
     }
 
-    const keyframes = this.getTrackKeyframes(trackId);
     if (this.interpolationKeyframesEl) {
+      this.interpolationKeyframesEl.innerHTML = "";
+
+      if (!keyframeCount) {
+        this.interpolationKeyframesEl.innerHTML =
+          '<div class="small text-secondary">No keyframes yet. Move to frames inside this object range, set A and B, and apply interpolation only when you want to fill the range.</div>';
+      } else {
+        const summary = document.createElement("div");
+        summary.className = "small text-secondary mb-1";
+        summary.textContent =
+          `Track keyframes: ${keyframeCount}. Current frame ${this.currentFrameIndex + 1} is ${
+            currentIsKeyframe ? "already a keyframe." : "between keyframes."
+          }`;
+        this.interpolationKeyframesEl.appendChild(summary);
+
+        const navigation = document.createElement("div");
+        navigation.className = "small text-secondary mb-1";
+        navigation.textContent =
+          `Previous keyframe: ${
+            prevKeyframe == null ? "-" : prevKeyframe + 1
+          }. Next keyframe: ${nextKeyframe == null ? "-" : nextKeyframe + 1}.`;
+        this.interpolationKeyframesEl.appendChild(navigation);
+
+        const guidance = document.createElement("div");
+        guidance.className = "small text-secondary";
+        guidance.textContent =
+          "Use the left sidebar keyframe buttons or the object timeline below the video to move between keyframes. This panel stays lightweight so polygon and box editing remains responsive.";
+        this.interpolationKeyframesEl.appendChild(guidance);
+      }
+    }
+
+    /*
+    if (false && this.interpolationKeyframesEl) {
       this.interpolationKeyframesEl.innerHTML = "";
 
       if (!keyframes.length) {
         this.interpolationKeyframesEl.innerHTML =
           '<div class="small text-secondary">No keyframes yet.</div>';
       } else {
-        keyframes.forEach((frameIndex) => {
+        if (displayKeyframes.length < keyframes.length) {
+          const summary = document.createElement("div");
+          summary.className = "small text-secondary mb-2";
+          summary.textContent =
+            `Showing ${displayKeyframes.length} of ${keyframes.length} keyframes for performance. Move to a nearby frame and use A/B to work elsewhere.`;
+          this.interpolationKeyframesEl.appendChild(summary);
+        }
+
+        displayKeyframes.forEach((frameIndex) => {
           const button = document.createElement("button");
           button.type = "button";
           button.className = "interpolation-keyframe-btn";
@@ -5936,6 +6390,7 @@ export class AnnotationCanvas {
       }
     }
 
+    */
     if (this.interpolationStartFrameEl) {
       this.interpolationStartFrameEl.textContent =
         this.interpolationSelection.startFrame == null
@@ -6243,6 +6698,7 @@ export class AnnotationCanvas {
     this.persistTrackUiStateToStorage();
 
     this.manualKeyframesByTrack.delete(trackId);
+    this.markManualKeyframesDirty();
     this.persistManualKeyframesToStorage();
 
     if (this.interpolationSelection.trackId === trackId) {
@@ -6886,11 +7342,73 @@ export class AnnotationCanvas {
 
   restorePendingTrackSelection() {
     if (!Number.isInteger(this.pendingTrackRestoreId)) {
-      return;
+      return false;
     }
     const trackId = this.pendingTrackRestoreId;
     this.pendingTrackRestoreId = null;
-    this.restoreActiveAnnotationForTrack(trackId);
+    return this.restoreVisibleTrackSelection(trackId);
+  }
+
+  restoreVisibleTrackSelection(trackId, options = {}) {
+    if (this.kind !== "video" || !Number.isInteger(trackId)) {
+      return false;
+    }
+
+    const { vertexIndex = null, clearSelectionWhenMissing = true } = options;
+    const targetAnnotation =
+      this.annotations.find((annotation) => annotation.track_id === trackId) || null;
+
+    if (!targetAnnotation) {
+      this.activeAnnotation = null;
+      this.activeVertexIndex = null;
+      if (this.isDragging) {
+        this.draggedAnnotation = null;
+      }
+
+      if (clearSelectionWhenMissing) {
+        this.activeTrackId = null;
+        this.interpolationSelection = {
+          trackId: null,
+          startFrame: null,
+          endFrame: null,
+        };
+        this.updateTrackTimelineActiveState();
+      }
+      return false;
+    }
+
+    this.activeAnnotation = targetAnnotation;
+    if (
+      this.isPolygonAnnotation(targetAnnotation) &&
+      Number.isInteger(vertexIndex)
+    ) {
+      const polygonPoints = Array.isArray(targetAnnotation.polygon_points)
+        ? targetAnnotation.polygon_points
+        : [];
+      const maxVertexIndex = Math.max(0, polygonPoints.length - 1);
+      this.activeVertexIndex = Math.max(
+        0,
+        Math.min(vertexIndex, maxVertexIndex)
+      );
+    } else {
+      this.activeVertexIndex = null;
+    }
+
+    this.activeTrackId = trackId;
+    if (this.interpolationSelection.trackId !== trackId) {
+      this.interpolationSelection = {
+        trackId,
+        startFrame: null,
+        endFrame: null,
+      };
+    }
+
+    if (this.isDragging) {
+      this.draggedAnnotation = targetAnnotation;
+    }
+
+    this.updateTrackTimelineActiveState();
+    return true;
   }
 
   requestFramePresentation(frameIndex, options = {}) {
@@ -6911,7 +7429,10 @@ export class AnnotationCanvas {
     ) {
       if (restoreTrackId != null) {
         this.pendingTrackRestoreId = restoreTrackId;
-        this.restorePendingTrackSelection();
+        if (this.restorePendingTrackSelection()) {
+          this.syncAnnotationStateControls();
+          this.requestRedraw(false);
+        }
       }
       this.updateFrameDisplay();
       return false;
@@ -8703,6 +9224,7 @@ export class AnnotationCanvas {
       }
 
       this.frameAnnotations = rebuiltMap;
+      this.markAnnotationStoreDirty();
       this.annotations = this.buildAnnotationsForFrame(this.currentFrameIndex);
 
       for (const [frameIndex, bucket] of this.frameAnnotations.entries()) {
@@ -8737,6 +9259,7 @@ export class AnnotationCanvas {
     const bucket = this.frameAnnotations.get(null) || [];
     const cleaned = this.sanitizeBucket(bucket, null);
     this.frameAnnotations.set(null, cleaned);
+    this.markAnnotationStoreDirty();
     this.annotations = cleaned;
 
     return cleaned.map((annotation) => ({
@@ -8954,7 +9477,11 @@ export class AnnotationCanvas {
     }
 
     const { source = "scrub" } = options;
-    if (source === "scrub") {
+    if (
+      source === "scrub" ||
+      source === "step" ||
+      source === "collaboration-follow"
+    ) {
       this.requestFramePresentation(frameIndex, options);
       return;
     }
@@ -8964,6 +9491,11 @@ export class AnnotationCanvas {
 
   applyVisibleFrame(frameIndex, options = {}) {
     const { source = "internal" } = options;
+    const isPlayback = source === "playback";
+    const isStepNavigation = source === "step";
+    const activeAnnotationChanged =
+      !!this.activeAnnotation || Number.isInteger(this.activeVertexIndex);
+    const previousActiveTrackId = this.activeTrackId;
 
     const clamped = this.clampFrameIndex(frameIndex);
 
@@ -8974,15 +9506,41 @@ export class AnnotationCanvas {
     this.activeAnnotation = null;
     this.activeVertexIndex = null;
 
+    if (!isPlayback) {
+      this.restorePendingTrackSelection();
+    }
+
     this.updateFrameDisplay();
+    if (isPlayback) {
+      if (activeAnnotationChanged) {
+        this.syncAnnotationStateControls();
+      }
+      this.requestRedraw(false);
+      this.updateTimelinePlayhead();
+      return;
+    }
+
+    const activeTrackChanged = previousActiveTrackId !== this.activeTrackId;
+
+    if (isStepNavigation) {
+      this.updateFastActionButtons();
+      if (activeTrackChanged) {
+        this.syncTrackVisibilityControls();
+      }
+      this.syncAnnotationStateControls();
+      this.requestRedraw(false);
+      this.updateTimelinePlayhead();
+      this.updateInterpolationPanel();
+      this.scheduleDeferredFrameUiRefresh();
+      return;
+    }
+
     this.updateFastActionButtons();
     this.syncTrackVisibilityControls();
     this.syncAnnotationStateControls();
-    this.requestRedraw(source !== "playback");
-    this.updateReferenceControls();
+    this.requestRedraw(true);
     this.updateTimelinePlayhead();
     this.updateInterpolationPanel();
-    this.restorePendingTrackSelection();
   }
 
   syncPlaybackTerminalFrame() {
@@ -9060,7 +9618,11 @@ export class AnnotationCanvas {
       this.mediaEl.pause();
       this.stopRenderLoop();
       // Ensure the final paused frame is drawn
-      this.requestRedraw();
+      this.requestRedraw(false);
+      this.updateFastActionButtons();
+      this.syncAnnotationStateControls();
+      this.updateInterpolationPanel();
+      this.scheduleDeferredFrameUiRefresh();
     }
   }
 
@@ -9096,7 +9658,11 @@ export class AnnotationCanvas {
       this.renderLoopActive = false;
       this.renderLoopHandle = null;
       this.syncPlaybackTerminalFrame();
-      this.requestRedraw();
+      this.requestRedraw(false);
+      this.updateFastActionButtons();
+      this.syncAnnotationStateControls();
+      this.updateInterpolationPanel();
+      this.scheduleDeferredFrameUiRefresh();
     };
 
     this.renderLoopHandle = window.requestAnimationFrame(tick);
@@ -9118,20 +9684,23 @@ export class AnnotationCanvas {
     if (this.kind !== "video") return;
     this.setCurrentFrame(frameIndex, {
       ...options,
-      source: "scrub",
+      source: options.source || "scrub",
     });
   }
 
   stepFrames(delta) {
     const targetFrame = this.getFrameNavigationBaseIndex() + delta;
     const previousTrackId =
-      this.kind === "video" &&
-      this.activeAnnotation &&
-      typeof this.activeAnnotation.track_id === "number"
-        ? this.activeAnnotation.track_id
+      this.kind === "video"
+        ? Number.isInteger(this.activeAnnotation?.track_id)
+          ? this.activeAnnotation.track_id
+          : Number.isInteger(this.activeTrackId)
+            ? this.activeTrackId
+            : null
         : null;
 
     this.seekToFrame(targetFrame, {
+      source: "step",
       restoreTrackId: previousTrackId,
     });
   }

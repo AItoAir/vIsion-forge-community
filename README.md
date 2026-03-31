@@ -2,6 +2,32 @@
 
 Self-hosted, video-first annotation for edge AI teams.
 
+Release history and highlights live in [CHANGELOG.md](CHANGELOG.md).
+
+## SAM2 object masking demo
+
+This inline GIF previews prompt-based object masking with SAM2 and batch
+propagation across a video clip directly on the GitHub page.
+
+![SAM2 object masking demo](docs/media/object-masking-sam2-demo.gif)
+
+Need a higher-quality copy? Download the
+[MP4 demo](docs/media/object-masking-sam2-demo.mp4).
+
+The repository keeps lightweight README-safe derivatives in `docs/media/`
+instead of the original full-resolution capture so clones stay small.
+
+## Live collaboration labeling demo
+
+This side-by-side demo shows two teammates labeling the same video item. One
+annotator traces and adjusts a bird polygon while the other teammate sees live
+presence and the in-progress polygon update in real time.
+
+![Live collaboration labeling demo](docs/media/live-collaboration-labeling-demo.gif)
+
+Need a higher-quality copy? Download the
+[MP4 collaboration demo](docs/media/live-collaboration-labeling-demo.mp4).
+
 ## Choose a runtime profile first
 
 VisionForge Community Edition now ships with three public deployment profiles:
