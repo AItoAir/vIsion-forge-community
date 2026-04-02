@@ -7,7 +7,7 @@
       <div class="small text-uppercase text-secondary fw-semibold mb-1">Account</div>
       <h1 class="h4 mb-1">My Page</h1>
       <p class="text-secondary mb-0">
-        Update your display name, department, and password here.
+        Update your display name, department, password, and developer API access here.
       </p>
     </div>
     <div class="small text-secondary text-lg-end">
@@ -151,6 +151,140 @@
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-12">
+      <div class="card bg-dark border-secondary shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+            <div>
+              <h2 class="h6 mb-1">Developer API Keys</h2>
+              <p class="small text-secondary mb-0">
+                Create a personal token for the public API. Use it as a bearer token for
+                <code>{{ developer_api_base_url }}</code>.
+              </p>
+            </div>
+            <div class="small text-secondary">
+              Header: <code>Authorization: Bearer &lt;token&gt;</code>
+            </div>
+          </div>
+          <div class="small text-secondary mb-3">
+            Developer API keys use the <code>fpk_</code> prefix.
+          </div>
+
+          {% if api_key_success %}
+          <div class="alert alert-success py-2" role="alert">
+            {{ api_key_success }}
+          </div>
+          {% endif %}
+          {% if api_key_error %}
+          <div class="alert alert-danger py-2" role="alert">
+            {{ api_key_error }}
+          </div>
+          {% endif %}
+
+          {% if generated_api_key_token %}
+          <div class="alert alert-warning" role="alert">
+            <div class="fw-semibold mb-1">Copy this token now.</div>
+            <div class="small mb-2">
+              {% if generated_api_key_name %}
+              <span class="text-light">{{ generated_api_key_name }}</span> was created successfully.
+              {% endif %}
+              This token is shown only once.
+            </div>
+            <code class="d-block text-break">{{ generated_api_key_token }}</code>
+          </div>
+          {% endif %}
+
+          <form method="post" action="{{ url_for('create_my_page_api_key') }}" class="row g-3 mb-4">
+            <div class="col-12 col-lg-8">
+              <label class="form-label small" for="api-key-name">API key name</label>
+              <input
+                type="text"
+                class="form-control"
+                id="api-key-name"
+                name="name"
+                value="{{ api_key_name_value }}"
+                maxlength="255"
+                placeholder="Example: Local automation"
+                required
+              />
+            </div>
+            <div class="col-12 col-lg-4 d-flex align-items-end">
+              <button type="submit" class="btn btn-primary w-100">
+                Create API key
+              </button>
+            </div>
+          </form>
+
+          {% if api_keys %}
+          <div class="table-responsive">
+            <table class="table table-dark table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Prefix</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">Last used</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" class="text-end">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for api_key in api_keys %}
+                <tr>
+                  <td>
+                    <div class="fw-semibold">{{ api_key.name }}</div>
+                    {% if api_key.expires_at %}
+                    <div class="small text-secondary">
+                      Expires {{ api_key.expires_at.strftime("%Y-%m-%d %H:%M UTC") }}
+                    </div>
+                    {% endif %}
+                  </td>
+                  <td><code>fpk_{{ api_key.key_id }}.****{{ api_key.secret_last_four }}</code></td>
+                  <td class="small text-secondary">
+                    {{ api_key.created_at.strftime("%Y-%m-%d %H:%M UTC") }}
+                  </td>
+                  <td class="small text-secondary">
+                    {% if api_key.last_used_at %}
+                    {{ api_key.last_used_at.strftime("%Y-%m-%d %H:%M UTC") }}
+                    {% else %}
+                    Never
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if api_key.is_active %}
+                    <span class="badge text-bg-success">Active</span>
+                    {% else %}
+                    <span class="badge text-bg-secondary">Revoked</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if api_key.is_active %}
+                    <form method="post" action="{{ url_for('revoke_my_page_api_key', api_key_id=api_key.id) }}" class="d-inline">
+                      <button type="submit" class="btn btn-sm btn-outline-danger">
+                        Revoke
+                      </button>
+                    </form>
+                    {% else %}
+                    <span class="small text-secondary">Unavailable</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="border border-secondary rounded p-3 small text-secondary">
+            No developer API keys yet. Create one here to call the public API from scripts,
+            SDKs, or external model pipelines.
+          </div>
+          {% endif %}
         </div>
       </div>
     </div>

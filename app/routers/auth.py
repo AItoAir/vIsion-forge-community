@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from ipaddress import ip_address
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -15,8 +16,9 @@ from ..config import (
     settings,
 )
 from ..database import get_db
-from ..models import User
+from ..models import ApiKey, User
 from ..security import (
+    create_api_key,
     get_current_user,
     get_optional_user,
     hash_password,
@@ -29,6 +31,13 @@ router = APIRouter(include_in_schema=False)
 templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent.parent / "templates")
 )
+
+MY_PAGE_API_KEY_TOKEN_SESSION_KEY = "_my_page_api_key_token"
+MY_PAGE_API_KEY_NAME_SESSION_KEY = "_my_page_api_key_name"
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _bootstrap_admin_is_configured() -> bool:
@@ -99,20 +108,33 @@ def _my_page_template_context(
     request: Request,
     *,
     current_user: User,
+    api_keys: list[ApiKey] | None = None,
     profile_error: str | None = None,
     profile_success: str | None = None,
     password_error: str | None = None,
     password_success: str | None = None,
+    api_key_error: str | None = None,
+    api_key_success: str | None = None,
+    api_key_name_value: str | None = None,
+    generated_api_key_token: str | None = None,
+    generated_api_key_name: str | None = None,
     profile_name_value: str | None = None,
     profile_department_value: str | None = None,
 ) -> dict[str, object]:
     return {
         "request": request,
         "current_user": current_user,
+        "api_keys": api_keys or [],
         "profile_error": profile_error,
         "profile_success": profile_success,
         "password_error": password_error,
         "password_success": password_success,
+        "api_key_error": api_key_error,
+        "api_key_success": api_key_success,
+        "api_key_name_value": api_key_name_value or "",
+        "generated_api_key_token": generated_api_key_token,
+        "generated_api_key_name": generated_api_key_name,
+        "developer_api_base_url": f"{str(request.base_url).rstrip('/')}/api/v1",
         "profile_name_value": (
             current_user.name if profile_name_value is None else profile_name_value
         )
@@ -138,6 +160,18 @@ def _normalize_profile_field(
     if len(cleaned) > 255:
         return None, f"{field_label} must be 255 characters or fewer."
     return cleaned, None
+
+
+def _list_user_api_keys(db: Session, user_id: int) -> list[ApiKey]:
+    return (
+        db.execute(
+            select(ApiKey)
+            .where(ApiKey.user_id == user_id)
+            .order_by(ApiKey.created_at.desc(), ApiKey.id.desc())
+        )
+        .scalars()
+        .all()
+    )
 
 
 @router.get("/login", response_class=HTMLResponse, name="login")
@@ -210,6 +244,8 @@ def my_page(
     request: Request,
     profile: str | None = None,
     password: str | None = None,
+    api_key: str | None = None,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     profile_success = (
@@ -218,14 +254,27 @@ def my_page(
     password_success = (
         "Your password has been updated." if password == "updated" else None
     )
+    api_key_success = None
+    if api_key == "created":
+        api_key_success = "Developer API key created."
+    elif api_key == "revoked":
+        api_key_success = "Developer API key revoked."
     return templates.TemplateResponse(
         request=request,
         name="my_page.html",
         context=_my_page_template_context(
             request,
             current_user=current_user,
+            api_keys=_list_user_api_keys(db, current_user.id),
             profile_success=profile_success,
             password_success=password_success,
+            api_key_success=api_key_success,
+            generated_api_key_token=request.session.pop(
+                MY_PAGE_API_KEY_TOKEN_SESSION_KEY, None
+            ),
+            generated_api_key_name=request.session.pop(
+                MY_PAGE_API_KEY_NAME_SESSION_KEY, None
+            ),
         ),
     )
 
@@ -318,6 +367,85 @@ def update_my_page_password(
 
     return RedirectResponse(
         url=f"{request.url_for('my_page')}?password=updated",
+        status_code=303,
+    )
+
+
+@router.post(
+    "/my-page/api-keys",
+    response_class=HTMLResponse,
+    name="create_my_page_api_key",
+)
+def create_my_page_api_key(
+    request: Request,
+    name: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    cleaned_name = name.strip()
+    if not cleaned_name:
+        return templates.TemplateResponse(
+            request=request,
+            name="my_page.html",
+            context=_my_page_template_context(
+                request,
+                current_user=current_user,
+                api_keys=_list_user_api_keys(db, current_user.id),
+                api_key_error="API key name is required.",
+                api_key_name_value=cleaned_name,
+            ),
+            status_code=400,
+        )
+    if len(cleaned_name) > 255:
+        return templates.TemplateResponse(
+            request=request,
+            name="my_page.html",
+            context=_my_page_template_context(
+                request,
+                current_user=current_user,
+                api_keys=_list_user_api_keys(db, current_user.id),
+                api_key_error="API key name must be 255 characters or fewer.",
+                api_key_name_value=cleaned_name,
+            ),
+            status_code=400,
+        )
+
+    _api_key, raw_token = create_api_key(
+        db,
+        user=current_user,
+        name=cleaned_name,
+    )
+    db.commit()
+    request.session[MY_PAGE_API_KEY_TOKEN_SESSION_KEY] = raw_token
+    request.session[MY_PAGE_API_KEY_NAME_SESSION_KEY] = cleaned_name
+    return RedirectResponse(
+        url=f"{request.url_for('my_page')}?api_key=created",
+        status_code=303,
+    )
+
+
+@router.post(
+    "/my-page/api-keys/{api_key_id}/revoke",
+    response_class=HTMLResponse,
+    name="revoke_my_page_api_key",
+)
+def revoke_my_page_api_key(
+    request: Request,
+    api_key_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    api_key = db.get(ApiKey, api_key_id)
+    if api_key is None or api_key.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    api_key.is_active = False
+    if api_key.revoked_at is None:
+        api_key.revoked_at = _utcnow()
+    db.add(api_key)
+    db.commit()
+    return RedirectResponse(
+        url=f"{request.url_for('my_page')}?api_key=revoked",
         status_code=303,
     )
 

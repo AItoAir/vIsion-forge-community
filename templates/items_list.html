@@ -258,7 +258,7 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=csv"
               hx-boost="false"
-              download="vision_forge_project_{{ project.id }}.csv"
+              download="frame_pin_project_{{ project.id }}.csv"
               >CSV</a
             >
           </li>
@@ -267,7 +267,7 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=json"
               hx-boost="false"
-              download="vision_forge_project_{{ project.id }}_annotations.json"
+              download="frame_pin_project_{{ project.id }}_annotations.json"
               >Annotations JSON</a
             >
           </li>
@@ -276,7 +276,7 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=yolo"
               hx-boost="false"
-              download="vision_forge_project_{{ project.id }}_yolo.zip"
+              download="frame_pin_project_{{ project.id }}_yolo.zip"
               >YOLO / YOLO-seg ZIP (images only)</a
             >
           </li>
@@ -285,8 +285,8 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=lf_project"
               hx-boost="false"
-              download="vision_forge_project_{{ project.id }}_lf_project.json"
-              >VisionForge JSON</a
+              download="frame_pin_project_{{ project.id }}_lf_project.json"
+              >FramePin project JSON</a
             >
           </li>
           <li><hr class="dropdown-divider" /></li>
@@ -295,8 +295,8 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=lf_video_tracks"
               hx-boost="false"
-              download="vision_forge_project_{{ project.id }}_video_tracks.json"
-              >LF video tracks JSON</a
+              download="frame_pin_project_{{ project.id }}_lf_video_tracks.json"
+              >FramePin video tracks JSON</a
             >
           </li>
           <li>
@@ -304,7 +304,7 @@
               class="dropdown-item"
               href="/api/export/project/{{ project.id }}?format=original_media"
               hx-boost="false"
-              download="vision_forge_project_{{ project.id }}_original_media.zip"
+              download="frame_pin_project_{{ project.id }}_original_media.zip"
               >Original media ZIP</a
             >
           </li>
@@ -620,6 +620,7 @@
   <tbody>
     {% for item in items %}
     {% set label_summary = item_label_summaries.get(item.id) %}
+    {% set preview_state = item_preview_state.get(item.id) %}
     <tr>
       <td>{{ item.id }}</td>
       <td>
@@ -630,9 +631,16 @@
           aria-label="Open {{ item.display_name }}"
         >
           <div class="item-preview-frame">
-            {% if item.kind.value == "image" %}
+            {% if preview_state and not preview_state.available %}
+            <div class="w-100 h-100 d-flex flex-column align-items-center justify-content-center text-center px-2">
+              <span class="badge text-bg-danger mb-2">Missing media</span>
+              <span class="small text-secondary">
+                {{ preview_state.missing_reason }}
+              </span>
+            </div>
+            {% elif item.kind.value == "image" %}
             <img
-              src="{{ url_for('item_media', item_id=item.id, variant='original') }}"
+              src="{{ url_for('item_media', item_id=item.id, variant=preview_state.variant if preview_state else 'original') }}"
               alt="{{ item.display_name }}"
               class="item-preview-media"
               loading="lazy"
@@ -645,7 +653,7 @@
               playsinline
               preload="none"
               data-preview-video
-              data-src="{{ url_for('item_media', item_id=item.id, variant='original') }}"
+              data-src="{{ url_for('item_media', item_id=item.id, variant=preview_state.variant if preview_state else 'display') }}"
               aria-label="{{ item.display_name }}"
             ></video>
             <span class="item-preview-badge">Video</span>
@@ -765,11 +773,11 @@
 {% if current_user.role.value in ["project_admin", "system_admin"] %}
 <script type="module" src="{{ url_for('static', path='js/upload.js') }}"></script>
 <script>
-  const visionForgeUploadConfig = {
+  const framePinUploadConfig = {
     projectId: {{ project.id }},
     uploadUrl: "{{ url_for('upload_item', project_id=project.id) }}"
   };
-  window.VISION_FORGE_UPLOAD_CONFIG = visionForgeUploadConfig;
+  window.FRAME_PIN_UPLOAD_CONFIG = framePinUploadConfig;
 </script>
 {% endif %}
 <script>

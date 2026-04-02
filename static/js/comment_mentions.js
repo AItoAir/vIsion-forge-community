@@ -137,15 +137,15 @@ function filterCandidates(candidates, query) {
 }
 
 function createMenu() {
-  if (window.__visionForgeMentionMenu instanceof HTMLElement) {
-    return window.__visionForgeMentionMenu;
+  if (window.__framePinMentionMenu instanceof HTMLElement) {
+    return window.__framePinMentionMenu;
   }
 
   const menu = document.createElement("div");
   menu.className = "mention-autocomplete-menu";
   menu.hidden = true;
   document.body.appendChild(menu);
-  window.__visionForgeMentionMenu = menu;
+  window.__framePinMentionMenu = menu;
   return menu;
 }
 

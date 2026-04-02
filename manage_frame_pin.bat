@@ -13,7 +13,7 @@ if defined LF_ENV_FILE (
 if defined LF_DOCKER_PRUNE_STATE_FILE (
   set "DOCKER_PRUNE_STATE_FILE=%LF_DOCKER_PRUNE_STATE_FILE%"
 ) else (
-  set "DOCKER_PRUNE_STATE_FILE=%SCRIPT_DIR%.git\vision-forge-docker-prune.last-run"
+  set "DOCKER_PRUNE_STATE_FILE=%SCRIPT_DIR%.git\frame-pin-docker-prune.last-run"
 )
 
 if exist "%ENV_FILE%" call :load_env "%ENV_FILE%"
@@ -61,7 +61,7 @@ if defined PROFILE_INPUT if defined LF_RUNTIME_PROFILE (
 if defined LF_PROJECT_NAME (
   set "PROJECT_NAME=%LF_PROJECT_NAME%"
 ) else (
-  set "PROJECT_NAME=vision-forge-!PROFILE!"
+  set "PROJECT_NAME=frame-pin-!PROFILE!"
 )
 
 set "COMPOSE_BASE_FILE=infra\compose.base.yaml"
@@ -202,7 +202,7 @@ goto :end
 :logs
 if not exist logs mkdir logs
 call :get_timestamp TIMESTAMP
-set "LOG_FILE=logs\vision-forge-!PROFILE!-!TIMESTAMP!.log"
+set "LOG_FILE=logs\frame-pin-!PROFILE!-!TIMESTAMP!.log"
 echo [INFO] Writing a current log snapshot to: !LOG_FILE!
 call :compose_profile logs api %EXTRA_ARGS% > "!LOG_FILE!"
 echo [INFO] Streaming API logs for '!PROFILE!' profile...

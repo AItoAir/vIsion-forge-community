@@ -1,12 +1,12 @@
 # Contributing
 
-Thanks for contributing to VisionForge Community Edition.
+Thanks for contributing to FramePin Community Edition.
 
 ## Development flow
 
 1. Choose a runtime profile by copying one of the `.env.*.example` files to
    `.env`.
-2. Start the stack with `manage_vision_forge.(sh|bat) up-build`.
+2. Start the stack with `manage_frame_pin.(sh|bat) up-build`.
 3. If your change touches schema, add an Alembic revision.
 4. Keep public-repo boundaries intact. Do not add private checkpoints,
    customer data, or enterprise-only modules.
@@ -33,4 +33,4 @@ python tools/check_public_release.py
 ```
 
 If your change depends on Docker behavior, also run the relevant
-`manage_vision_forge` command for the profile you changed.
+`manage_frame_pin` command for the profile you changed.

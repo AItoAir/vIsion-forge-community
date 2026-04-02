@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Helper script to manage VisionForge Community Edition Docker profiles.
+# Helper script to manage FramePin Community Edition Docker profiles.
 
 set -euo pipefail
 
@@ -16,7 +16,7 @@ else
 fi
 
 ENV_FILE="${LF_ENV_FILE:-$SCRIPT_DIR/.env}"
-DOCKER_PRUNE_STATE_FILE="${LF_DOCKER_PRUNE_STATE_FILE:-$SCRIPT_DIR/.git/vision-forge-docker-prune.last-run}"
+DOCKER_PRUNE_STATE_FILE="${LF_DOCKER_PRUNE_STATE_FILE:-$SCRIPT_DIR/.git/frame-pin-docker-prune.last-run}"
 
 load_env_file() {
   if [[ ! -f "$ENV_FILE" ]]; then
@@ -69,7 +69,7 @@ normalize_profile() {
 usage() {
   cat <<'USAGE'
 Usage:
-  ./manage_vision_forge.sh [profile] <action> [extra docker compose args]
+  ./manage_frame_pin.sh [profile] <action> [extra docker compose args]
 
 Profiles:
   cpu    - local CPU development
@@ -102,16 +102,16 @@ Environment:
 
 Examples:
   cp .env.example .env
-  ./manage_vision_forge.sh up-build
+  ./manage_frame_pin.sh up-build
 
   cp .env.cpu.example .env
-  ./manage_vision_forge.sh up-build
+  ./manage_frame_pin.sh up-build
 
   cp .env.gpu.example .env
-  ./manage_vision_forge.sh gpu logs
+  ./manage_frame_pin.sh gpu logs
 
   cp .env.cloud.example .env
-  ./manage_vision_forge.sh cloud up-build
+  ./manage_frame_pin.sh cloud up-build
 USAGE
 }
 
@@ -231,7 +231,7 @@ if [[ -n "$PROFILE_INPUT" && -n "${LF_RUNTIME_PROFILE:-}" ]]; then
     echo "[WARN] Update the env file as well so profile-specific settings stay aligned."
   fi
 fi
-PROJECT_NAME="${LF_PROJECT_NAME:-vision-forge-${PROFILE}}"
+PROJECT_NAME="${LF_PROJECT_NAME:-frame-pin-${PROFILE}}"
 COMPOSE_BASE_FILE="infra/compose.base.yaml"
 COMPOSE_PROFILE_FILE="infra/compose.${PROFILE}.yaml"
 
@@ -378,7 +378,7 @@ case "$ACTION" in
   logs)
     mkdir -p logs
     TIMESTAMP="$(date +"%Y%m%d_%H%M%S")"
-    LOG_FILE="logs/vision-forge-${PROFILE}-${TIMESTAMP}.log"
+    LOG_FILE="logs/frame-pin-${PROFILE}-${TIMESTAMP}.log"
     echo "[INFO] Streaming API logs for '$PROFILE' profile..."
     echo "[INFO] Writing to: ${LOG_FILE}"
     echo "[INFO] Press Ctrl+C to stop."

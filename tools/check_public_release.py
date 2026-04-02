@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 FORBIDDEN_EXACT_PATHS = {
     ".env",
+    "docs/community_release_runbook.md",
 }
 
 FORBIDDEN_PREFIXES = (
@@ -28,6 +29,10 @@ FORBIDDEN_SUFFIXES = (
 )
 
 FORBIDDEN_PATH_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"(^|/)docs/marketing(/|$)"),
+        "tracked internal-only marketing collateral",
+    ),
     (
         re.compile(r"(^|/)(?:exports?|exported|data/exports?)(/|$)"),
         "tracked export artifact directory",

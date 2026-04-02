@@ -3324,7 +3324,7 @@ export class AnnotationCanvas {
   }
 
   getTrackUiStorageKey() {
-    return `vision-forge:item:${this.itemId}:track-ui`;
+    return `frame-pin:item:${this.itemId}:track-ui`;
   }
 
   loadTrackUiStateFromStorage() {
@@ -3356,7 +3356,7 @@ export class AnnotationCanvas {
   }
 
   getAnnotationLabelVisibilityStorageKey() {
-    return "vision-forge:annotation:show-canvas-labels";
+    return "frame-pin:annotation:show-canvas-labels";
   }
 
   loadAnnotationLabelVisibilityFromStorage() {
@@ -5739,7 +5739,7 @@ export class AnnotationCanvas {
   }
 
   getManualKeyframesStorageKey() {
-    return `vision-forge:item:${this.itemId}:manual-keyframes`;
+    return `frame-pin:item:${this.itemId}:manual-keyframes`;
   }
 
   buildDefaultManualKeyframeMap() {

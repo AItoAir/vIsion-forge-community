@@ -1,8 +1,47 @@
-# VisionForge Community Edition
+# FramePin Community Edition
 
-Self-hosted, video-first annotation for edge AI teams.
+Image & Video Annotation for Computer Vision
+
+FramePin is an image and video annotation tool for computer vision teams.
+It helps teams pin objects, decisions, and review context to the exact frame where they matter.
+
+Pin decisions to the exact frame.
 
 Release history and highlights live in [CHANGELOG.md](CHANGELOG.md).
+
+Repository note: the GitHub repository slug may still temporarily appear as
+`vision-forge-community` until the manual rename to `framepins` is completed.
+
+## Commercial deployment and contact
+
+If you need production use beyond the Additional Use Grant, on-prem rollout
+planning, enterprise support, OEM or redistribution rights, or custom
+development, contact [licensing@aitoair.com](mailto:licensing@aitoair.com).
+
+See also:
+
+- [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)
+
+## Licensing at a glance
+
+- First-party Community Edition code in this repository is licensed under
+  Business Source License 1.1
+- Each public release has its own Change Date and later converts to
+  `AGPL-3.0-or-later`
+- Third-party dependencies, model assets, fonts, and other upstream material
+  keep their own original licenses
+- Customer input data and exported annotation outputs are not relicensed by this
+  repository
+
+## Quick answers
+
+- Evaluating or prototyping FramePin? Start with the Community Edition
+  profiles and quick start below.
+- Planning a production, on-prem, OEM, white-label, or customer-facing
+  deployment? Contact [licensing@aitoair.com](mailto:licensing@aitoair.com).
+- Need the exact legal terms? Review [LICENSE](LICENSE),
+  [LICENSE.BSL-1.1](LICENSE.BSL-1.1), and
+  [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
 
 ## SAM2 object masking demo
 
@@ -30,7 +69,7 @@ Need a higher-quality copy? Download the
 
 ## Choose a runtime profile first
 
-VisionForge Community Edition now ships with three public deployment profiles:
+FramePin Community Edition now ships with three public deployment profiles:
 
 | Profile | Best for | Default SAM2 mode | Env template |
 | --- | --- | --- | --- |
@@ -38,7 +77,7 @@ VisionForge Community Edition now ships with three public deployment profiles:
 | `cpu` | Fallback local development profile on a CPU-only machine | disabled | `.env.cpu.example` |
 | `cloud` | Single-host self-hosting | disabled | `.env.cloud.example` |
 
-Windows uses the same flow through `manage_vision_forge.bat`.
+Windows uses the same flow through `manage_frame_pin.bat`.
 `restart` ensures the database is running, applies migrations when enabled, and then recreates the API container.
 
 ## Quick start
@@ -86,13 +125,13 @@ For HTTPS or reverse-proxy deployments, review:
 ### 3. Start the stack
 
 ```bash
-./manage_vision_forge.sh up-build
+./manage_frame_pin.sh up-build
 ```
 
 On Windows:
 
 ```bat
-manage_vision_forge.bat up-build
+manage_frame_pin.bat up-build
 ```
 
 The management scripts now:
@@ -112,10 +151,10 @@ The local-development templates (`.env.example`, `.env.gpu.example`,
 `.env.cpu.example`) enable a bootstrap system admin account for local
 evaluation:
 
-- Email: `admin@visionforge.test`
-- Password: `VisionForge123`
+- Email: `admin@framepin.test`
+- Password: `FramePin123`
 
-On startup VisionForge ensures this account exists and resets its password to
+On startup FramePin ensures this account exists and resets its password to
 the value currently configured in `.env`. The login page only surfaces these
 repository-default credentials for local or loopback access.
 
@@ -210,7 +249,7 @@ Alembic is now the official schema migration path.
 Run migrations directly with:
 
 ```bash
-./manage_vision_forge.sh migrate
+./manage_frame_pin.sh migrate
 ```
 
 The app still keeps its runtime schema compatibility checks in `app/main.py` as
@@ -219,7 +258,7 @@ new schema work should go through Alembic revisions.
 
 ## Repository scope
 
-This repository contains the public Community Edition of VisionForge.
+This repository contains the public Community Edition of FramePin.
 
 It includes:
 
@@ -244,7 +283,7 @@ Private or enterprise overlays can attach additional middleware, mounts, or
 routers through `APP_EXTENSION_HOOKS`, for example:
 
 ```bash
-APP_EXTENSION_HOOKS=vision_forge_enterprise.app_hooks
+APP_EXTENSION_HOOKS=frame_pin_enterprise.app_hooks
 ```
 
 Each configured module should expose `apply_extension_hooks(app)` so the

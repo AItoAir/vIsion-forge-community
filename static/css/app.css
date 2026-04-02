@@ -1152,9 +1152,103 @@ body {
   min-width: 6.25rem;
 }
 
+.team-members-table {
+  margin-bottom: 0;
+}
+
+.team-members-table th,
+.team-members-table td {
+  vertical-align: middle;
+}
+
+.team-members-col-email {
+  width: 37%;
+}
+
+.team-members-col-role {
+  width: 33%;
+}
+
+.team-members-col-status {
+  width: 12%;
+}
+
+.team-members-col-actions {
+  width: 18%;
+}
+
+.team-member-email {
+  word-break: break-word;
+}
+
+.team-member-role-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f8f9fa;
+  line-height: 1.2;
+}
+
+.team-member-role-hint {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: #8b949e;
+  line-height: 1.35;
+}
+
+.team-member-role-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.team-member-role-select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 10.5rem;
+  max-width: 11.75rem;
+}
+
+.team-member-role-save {
+  flex: 0 0 auto;
+  padding-inline: 0.85rem;
+  white-space: nowrap;
+}
+
+.team-member-status-cell,
+.team-member-actions-cell {
+  white-space: nowrap;
+}
+
 @media (max-width: 991.98px) {
   .team-role-matrix th[scope="row"] {
     min-width: 15rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .team-members-col-email,
+  .team-members-col-role,
+  .team-members-col-status,
+  .team-members-col-actions {
+    width: auto;
+  }
+
+  .team-member-role-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .team-member-role-select,
+  .team-member-role-save {
+    width: 100%;
+    max-width: none;
+  }
+
+  .team-member-actions-cell {
+    white-space: normal;
   }
 }
 

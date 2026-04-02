@@ -2,14 +2,14 @@ services:
   db:
     image: postgres:15
     environment:
-      POSTGRES_DB: ${LF_DATABASE_NAME:-vision_forge}
-      POSTGRES_USER: ${LF_DATABASE_USER:-vision_forge}
+      POSTGRES_DB: ${LF_DATABASE_NAME:-frame_pin}
+      POSTGRES_USER: ${LF_DATABASE_USER:-frame_pin}
       POSTGRES_PASSWORD: ${LF_DATABASE_PASSWORD:-secret}
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${LF_DATABASE_USER:-vision_forge} -d ${LF_DATABASE_NAME:-vision_forge}",
+          "pg_isready -U ${LF_DATABASE_USER:-frame_pin} -d ${LF_DATABASE_NAME:-frame_pin}",
         ]
       interval: 5s
       timeout: 3s
@@ -27,10 +27,10 @@ services:
         condition: service_healthy
     environment:
       ENV: ${ENV:-dev}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://vision_forge:secret@db:5432/vision_forge}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://frame_pin:secret@db:5432/frame_pin}
       SECRET_KEY: ${SECRET_KEY:-change_me_dev}
       PASSWORD_SALT: ${PASSWORD_SALT:-}
-      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-vision_forge_session}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-frame_pin_session}
       SESSION_COOKIE_HTTPS_ONLY: ${SESSION_COOKIE_HTTPS_ONLY:-0}
       SESSION_COOKIE_SAME_SITE: ${SESSION_COOKIE_SAME_SITE:-lax}
       SESSION_COOKIE_MAX_AGE_SECONDS: ${SESSION_COOKIE_MAX_AGE_SECONDS:-1209600}
@@ -51,7 +51,7 @@ services:
       SAM2_ASYNC_LOADING_FRAMES: ${SAM2_ASYNC_LOADING_FRAMES:-0}
       SAM2_APPLY_POSTPROCESSING: ${SAM2_APPLY_POSTPROCESSING:-1}
       SAM2_VOS_OPTIMIZED: ${SAM2_VOS_OPTIMIZED:-0}
-      SAM2_CACHE_DIR: ${SAM2_CACHE_DIR:-/tmp/vision_forge_sam2}
+      SAM2_CACHE_DIR: ${SAM2_CACHE_DIR:-/tmp/frame_pin_sam2}
       SAM2_POLYGON_EPSILON: ${SAM2_POLYGON_EPSILON:-0.003}
       SAM2_VIDEO_CHUNK_SIZE: ${SAM2_VIDEO_CHUNK_SIZE:-240}
       SAM2_VIDEO_CHUNK_OVERLAP: ${SAM2_VIDEO_CHUNK_OVERLAP:-32}

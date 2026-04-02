@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from app.models import Item, ItemKind, ItemStatus
 import app.services.media as media
@@ -38,28 +40,95 @@ class MediaConversionTests(unittest.TestCase):
         self.assertEqual(frame_rate_mode, media.FRAME_RATE_MODE_VFR)
 
     def test_sync_item_media_conversion_state_marks_vfr_as_failed(self) -> None:
-        item = make_video_item(frame_rate_mode=media.FRAME_RATE_MODE_VFR)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            static_dir = Path(temp_dir) / "static"
+            source_path = static_dir / "uploads" / "project_1" / "demo.mp4"
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_bytes(b"vfr-video")
+            item = make_video_item(frame_rate_mode=media.FRAME_RATE_MODE_VFR)
 
-        changed = media.sync_item_media_conversion_state(item)
+            with patch.object(media, "static_root", return_value=static_dir):
+                changed = media.sync_item_media_conversion_state(item)
 
-        self.assertTrue(changed)
-        self.assertEqual(
-            item.media_conversion_status, media.MEDIA_CONVERSION_STATUS_FAILED
-        )
-        self.assertIn("constant frame rate", item.media_conversion_error or "")
+            self.assertTrue(changed)
+            self.assertEqual(
+                item.media_conversion_status, media.MEDIA_CONVERSION_STATUS_FAILED
+            )
+            self.assertIn("constant frame rate", item.media_conversion_error or "")
 
     def test_sync_item_media_conversion_state_requeues_missing_converted_video(self) -> None:
-        item = make_video_item(
-            media_conversion_status=media.MEDIA_CONVERSION_STATUS_READY,
-            media_conversion_profile=media.labeling_proxy_profile_token(),
-        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            static_dir = Path(temp_dir) / "static"
+            source_path = static_dir / "uploads" / "project_1" / "demo.mp4"
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_bytes(b"original-video")
+            item = make_video_item(
+                media_conversion_status=media.MEDIA_CONVERSION_STATUS_READY,
+                media_conversion_profile=media.labeling_proxy_profile_token(),
+            )
 
-        changed = media.sync_item_media_conversion_state(item)
+            with patch.object(media, "static_root", return_value=static_dir):
+                changed = media.sync_item_media_conversion_state(item)
 
-        self.assertTrue(changed)
-        self.assertEqual(
-            item.media_conversion_status, media.MEDIA_CONVERSION_STATUS_PENDING
-        )
+            self.assertTrue(changed)
+            self.assertEqual(
+                item.media_conversion_status, media.MEDIA_CONVERSION_STATUS_PENDING
+            )
+
+    def test_resolve_media_source_path_returns_existing_static_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            static_dir = Path(temp_dir) / "static"
+            source_path = static_dir / "uploads" / "project_1" / "demo.mp4"
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_bytes(b"video-bytes")
+            item = make_video_item(path="uploads/project_1/demo.mp4")
+
+            with patch.object(media, "static_root", return_value=static_dir):
+                resolved = media.resolve_media_source_path(item)
+
+            self.assertEqual(source_path, resolved)
+
+    def test_sync_item_media_conversion_state_marks_missing_source_as_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            static_dir = Path(temp_dir) / "static"
+            static_dir.mkdir(parents=True, exist_ok=True)
+            item = make_video_item(
+                path="uploads/project_1/missing.mp4",
+                media_conversion_status=media.MEDIA_CONVERSION_STATUS_READY,
+                media_conversion_profile=media.labeling_proxy_profile_token(),
+            )
+
+            with patch.object(media, "static_root", return_value=static_dir):
+                changed = media.sync_item_media_conversion_state(item)
+
+            self.assertTrue(changed)
+            self.assertEqual(
+                item.media_conversion_status, media.MEDIA_CONVERSION_STATUS_FAILED
+            )
+            self.assertIn("Video source was not found", item.media_conversion_error or "")
+
+    def test_sync_item_media_conversion_state_requeues_when_missing_source_is_recovered(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            static_dir = Path(temp_dir) / "static"
+            source_path = static_dir / "uploads" / "project_1" / "demo.mp4"
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_bytes(b"restored-video")
+            item = make_video_item(
+                path="uploads/project_1/demo.mp4",
+                media_conversion_status=media.MEDIA_CONVERSION_STATUS_FAILED,
+                media_conversion_error="Video source was not found: uploads/project_1/demo.mp4",
+                media_conversion_profile=media.labeling_proxy_profile_token(),
+            )
+
+            with patch.object(media, "static_root", return_value=static_dir):
+                changed = media.sync_item_media_conversion_state(item)
+
+            self.assertTrue(changed)
+            self.assertEqual(
+                item.media_conversion_status, media.MEDIA_CONVERSION_STATUS_PENDING
+            )
+            self.assertIsNone(item.media_conversion_error)
+            self.assertTrue(source_path.is_file())
 
     def test_build_annotation_media_state_uses_converted_path_when_ready(self) -> None:
         item = make_video_item(

@@ -1,9 +1,9 @@
 # Third-Party Notices
 
-This repository contains first-party VisionForge Community Edition code and also
+This repository contains first-party FramePin Community Edition code and also
 depends on third-party software.
 
-The VisionForge Community Edition license applies only to first-party material in
+The FramePin Community Edition license applies only to first-party material in
 this repository unless a file or directory states otherwise. Third-party software,
 third-party assets, and third-party notices remain under their own original terms.
 

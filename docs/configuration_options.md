@@ -1,6 +1,6 @@
 # Configuration Options
 
-VisionForge Community Edition uses the `.env` file as the main configuration
+FramePin Community Edition uses the `.env` file as the main configuration
 surface.
 
 ## The first decision

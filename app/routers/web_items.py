@@ -43,6 +43,7 @@ from ..services.media import (
     refresh_annotation_media_state,
     remove_labeling_proxy_video,
     resolve_annotation_media_path,
+    resolve_media_source_path,
     touch_media_conversion_access,
 )
 from ..services.sam2 import sam2_feature_configured, sam2_feature_enabled
@@ -87,7 +88,7 @@ def _item_media_conversion_payload(
 
 
 def _is_async_upload_request(request: Request) -> bool:
-    return request.headers.get("x-vision-forge-upload", "").strip() == "1"
+    return request.headers.get("x-frame-pin-upload", "").strip() == "1"
 
 
 def _get_prev_next_item_ids(db: Session, project_id: int, item: Item) -> tuple[int | None, int | None]:
@@ -153,8 +154,15 @@ def item_media(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     media_path = media_storage_path(_item_media_relative_path(item, variant))
+    if not media_path.is_file() and _item_media_relative_path(item, variant) == item.path:
+        recovered_source_path = resolve_media_source_path(item)
+        if recovered_source_path is not None:
+            media_path = recovered_source_path
     if not media_path.is_file():
-        raise HTTPException(status_code=404, detail="Item media not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Item media not found on disk: {item.path}",
+        )
 
     return FileResponse(
         path=media_path,

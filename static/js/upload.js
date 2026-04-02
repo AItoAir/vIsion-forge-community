@@ -2,7 +2,7 @@
 // Multi-file drag & drop uploader for project items.
 
 function bootMultiFileUpload() {
-  const cfg = window.VISION_FORGE_UPLOAD_CONFIG || {};
+  const cfg = window.FRAME_PIN_UPLOAD_CONFIG || {};
   const uploadUrl = cfg.uploadUrl;
   if (!uploadUrl) {
     return;
@@ -75,7 +75,7 @@ function bootMultiFileUpload() {
         method: "POST",
         headers: {
           Accept: "application/json",
-          "X-Vision-Forge-Upload": "1",
+          "X-Frame-Pin-Upload": "1",
         },
         body: formData,
       });

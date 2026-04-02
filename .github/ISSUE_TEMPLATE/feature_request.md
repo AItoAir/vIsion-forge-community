@@ -12,7 +12,7 @@ What problem are you trying to solve?
 
 ## Proposed change
 
-What should VisionForge do differently?
+What should FramePin do differently?
 
 ## Runtime profile
 

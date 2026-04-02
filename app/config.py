@@ -3,8 +3,8 @@ from __future__ import annotations
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-DEFAULT_BOOTSTRAP_ADMIN_EMAIL = "admin@visionforge.test"
-DEFAULT_BOOTSTRAP_ADMIN_PASSWORD = "VisionForge123"
+DEFAULT_BOOTSTRAP_ADMIN_EMAIL = "admin@framepin.test"
+DEFAULT_BOOTSTRAP_ADMIN_PASSWORD = "FramePin123"
 VALID_SESSION_COOKIE_SAME_SITE_VALUES = {"lax", "strict", "none"}
 
 
@@ -33,10 +33,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     env: str = "dev"
-    database_url: str = "postgresql+psycopg2://vision_forge:secret@localhost:5432/vision_forge"
+    database_url: str = "postgresql+psycopg2://frame_pin:secret@localhost:5432/frame_pin"
     secret_key: str = "dev-insecure-session-key-change-before-production"
     password_salt: str = ""
-    session_cookie_name: str = "vision_forge_session"
+    session_cookie_name: str = "frame_pin_session"
     session_cookie_https_only: bool = False
     session_cookie_same_site: str = "lax"
     session_cookie_max_age_seconds: int = 1209600
@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     sam2_async_loading_frames: bool = False
     sam2_apply_postprocessing: bool = True
     sam2_vos_optimized: bool = False
-    sam2_cache_dir: str = "/tmp/vision_forge_sam2"
+    sam2_cache_dir: str = "/tmp/frame_pin_sam2"
     sam2_polygon_epsilon: float = 0.003
     sam2_video_chunk_size: int = 240
     sam2_video_chunk_overlap: int = 32
@@ -74,5 +74,7 @@ class Settings(BaseSettings):
     labeling_proxy_max_concurrent_jobs: int = 2
     labeling_proxy_storage_budget_gb: float = 100.0
     labeling_proxy_storage_ttl_days: int = 14
+    public_api_export_dir: str = "data/public_api_exports"
+    public_api_webhook_timeout_seconds: int = 5
 
 settings = Settings()

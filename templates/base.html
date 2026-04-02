@@ -2,7 +2,7 @@
 <html lang="en" data-bs-theme="dark">
   <head>
     <meta charset="utf-8" />
-    <title>VisionForge</title>
+    <title>FramePin</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <link
@@ -22,7 +22,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom">
       <div class="container-fluid">
         <a class="navbar-brand fw-bold" href="{{ url_for('projects_index') }}">
-          VisionForge
+          FramePin
         </a>
         <div class="d-flex align-items-center ms-auto gap-2">
           {% if request.state.user is defined and request.state.user %}
@@ -92,17 +92,17 @@
     <script src="{{ url_for('static', path='js/bootstrap_fallback.js') }}"></script>
     <script src="{{ url_for('static', path='js/notification_center.js') }}?v=20260330_notifications"></script>
     <script>
-      window.VISION_FORGE_SECURITY = {
+      window.FRAME_PIN_SECURITY = {
         csrfToken: {{ request.state.csrf_token | tojson }},
       };
-      window.VISION_FORGE_NOTIFICATIONS = {
+      window.FRAME_PIN_NOTIFICATIONS = {
         listUrl: {{ (url_for('list_notifications') | string) | tojson }},
         readUrl: {{ (url_for('read_notifications') | string) | tojson }},
         pollIntervalMs: 30000,
       };
 
       (() => {
-        const csrfToken = window.VISION_FORGE_SECURITY?.csrfToken || null;
+        const csrfToken = window.FRAME_PIN_SECURITY?.csrfToken || null;
         const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
         function isSameOriginUrl(url) {

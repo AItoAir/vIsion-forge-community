@@ -67,6 +67,19 @@ class LabelGeometryKind(str, enum.Enum):
     tag = "tag"
 
 
+class ExportJobStatus(str, enum.Enum):
+    queued = "queued"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+
+
+class PredictionRunStatus(str, enum.Enum):
+    pending = "pending"
+    completed = "completed"
+    failed = "failed"
+
+
 class Team(Base):
     __tablename__ = "team"
 
@@ -131,6 +144,11 @@ class Project(Base):
     label_classes: Mapped[list["LabelClass"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    export_jobs: Mapped[list["ExportJob"]] = relationship(cascade="all, delete-orphan")
+    webhooks: Mapped[list["Webhook"]] = relationship(cascade="all, delete-orphan")
+    prediction_runs: Mapped[list["PredictionRun"]] = relationship(
+        cascade="all, delete-orphan"
+    )
 
 
 class Item(Base):
@@ -186,6 +204,9 @@ class Item(Base):
         back_populates="item", cascade="all, delete-orphan"
     )
     review_comments: Mapped[list["ReviewComment"]] = relationship(
+        back_populates="item", cascade="all, delete-orphan"
+    )
+    predictions: Mapped[list["Prediction"]] = relationship(
         back_populates="item", cascade="all, delete-orphan"
     )
 
@@ -475,3 +496,271 @@ class Notification(Base):
         except json.JSONDecodeError:
             return None
         return value if isinstance(value, dict) else None
+
+
+class ApiKey(Base):
+    __tablename__ = "api_key"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    key_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    secret_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    secret_last_four: Mapped[str] = mapped_column(String(4), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        server_default=text("true"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped[User] = relationship()
+
+
+class ExportJob(Base):
+    __tablename__ = "export_job"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    requested_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
+    status: Mapped[ExportJobStatus] = mapped_column(
+        Enum(ExportJobStatus),
+        nullable=False,
+        default=ExportJobStatus.queued,
+        server_default=text("'queued'"),
+    )
+    format: Mapped[str] = mapped_column(String(64), nullable=False)
+    artifact_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    download_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    project: Mapped[Project] = relationship(back_populates="export_jobs")
+    requested_by_user: Mapped["User | None"] = relationship(foreign_keys=[requested_by])
+
+    @property
+    def payload(self) -> dict | None:
+        if not self.payload_json:
+            return None
+        try:
+            value = json.loads(self.payload_json)
+        except json.JSONDecodeError:
+            return None
+        return value if isinstance(value, dict) else None
+
+    @payload.setter
+    def payload(self, value: dict | None) -> None:
+        self.payload_json = (
+            json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+            if value
+            else None
+        )
+
+
+class Webhook(Base):
+    __tablename__ = "webhook"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("project.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    events_json: Mapped[str] = mapped_column(Text, nullable=False)
+    signing_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        server_default=text("true"),
+    )
+    last_delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_response_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    owner: Mapped[User] = relationship()
+    project: Mapped["Project | None"] = relationship(back_populates="webhooks")
+
+    @property
+    def events(self) -> list[str]:
+        if not self.events_json:
+            return []
+        try:
+            value = json.loads(self.events_json)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(value, list):
+            return []
+        return [str(entry).strip() for entry in value if str(entry).strip()]
+
+    @events.setter
+    def events(self, value: list[str] | None) -> None:
+        normalized = [str(entry).strip() for entry in (value or []) if str(entry).strip()]
+        self.events_json = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+
+
+class PredictionRun(Base):
+    __tablename__ = "prediction_run"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    model_version: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    external_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[PredictionRunStatus] = mapped_column(
+        Enum(PredictionRunStatus),
+        nullable=False,
+        default=PredictionRunStatus.pending,
+        server_default=text("'pending'"),
+    )
+    imported_prediction_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    project: Mapped[Project] = relationship(back_populates="prediction_runs")
+    created_by_user: Mapped["User | None"] = relationship(foreign_keys=[created_by])
+    predictions: Mapped[list["Prediction"]] = relationship(
+        back_populates="prediction_run", cascade="all, delete-orphan"
+    )
+
+    @property
+    def metadata_payload(self) -> dict | None:
+        if not self.metadata_json:
+            return None
+        try:
+            value = json.loads(self.metadata_json)
+        except json.JSONDecodeError:
+            return None
+        return value if isinstance(value, dict) else None
+
+    @metadata_payload.setter
+    def metadata_payload(self, value: dict | None) -> None:
+        self.metadata_json = (
+            json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+            if value
+            else None
+        )
+
+
+class Prediction(Base):
+    __tablename__ = "prediction"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    prediction_run_id: Mapped[int] = mapped_column(
+        ForeignKey("prediction_run.id"), nullable=False
+    )
+    item_id: Mapped[int] = mapped_column(ForeignKey("item.id"), nullable=False)
+    label_class_id: Mapped[int] = mapped_column(ForeignKey("label_class.id"), nullable=False)
+    frame_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    track_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    propagation_frames: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    external_prediction_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    x1: Mapped[float] = mapped_column(Float, nullable=False)
+    y1: Mapped[float] = mapped_column(Float, nullable=False)
+    x2: Mapped[float] = mapped_column(Float, nullable=False)
+    y2: Mapped[float] = mapped_column(Float, nullable=False)
+    points_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    prediction_run: Mapped[PredictionRun] = relationship(back_populates="predictions")
+    item: Mapped[Item] = relationship(back_populates="predictions")
+    label_class: Mapped[LabelClass] = relationship()
+
+    @property
+    def polygon_points(self) -> list[list[float]] | None:
+        if not self.points_json:
+            return None
+        try:
+            value = json.loads(self.points_json)
+        except json.JSONDecodeError:
+            return None
+        return value if isinstance(value, list) else None
+
+    @polygon_points.setter
+    def polygon_points(self, value: list[list[float]] | None) -> None:
+        self.points_json = (
+            json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+            if value
+            else None
+        )
+
+    @property
+    def metadata_payload(self) -> dict | None:
+        if not self.metadata_json:
+            return None
+        try:
+            value = json.loads(self.metadata_json)
+        except json.JSONDecodeError:
+            return None
+        return value if isinstance(value, dict) else None
+
+    @metadata_payload.setter
+    def metadata_payload(self, value: dict | None) -> None:
+        self.metadata_json = (
+            json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+            if value
+            else None
+        )

@@ -5,7 +5,7 @@
 Please do not open public GitHub issues for suspected security vulnerabilities.
 
 Report them privately through the AItoAir contact form below and include
-`VisionForge security report` in the message:
+`FramePin security report` in the message:
 
 https://aitoair.com/en/contact-us-en/
 

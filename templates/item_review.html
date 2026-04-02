@@ -582,7 +582,7 @@
 <script type="module" src="{{ url_for('static', path='js/media_conversion_status.js') }}?v=20260328_media_conversion_status"></script>
 {% endif %}
 <script>
-  const visionForgeConfig = {
+  const framePinConfig = {
     itemId: {{ item.id }},
     apiBase: "/api",
     kind: "{{ item.kind.value }}",
@@ -598,6 +598,6 @@
     mentionCandidates: {{ mention_candidates | tojson }},
     mediaConversion: {{ media_conversion | tojson }},
   };
-  window.VISION_FORGE_CONFIG = visionForgeConfig;
+  window.FRAME_PIN_CONFIG = framePinConfig;
 </script>
 {% endblock %}

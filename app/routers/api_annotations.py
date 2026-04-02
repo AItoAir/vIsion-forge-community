@@ -548,6 +548,7 @@ def replace_annotations(
         current_user_id=current_user.id,
     )
 
+    db.flush()
     annotation_count = _count_item_annotations(db, item.id)
     item.status = ItemStatus.in_progress if annotation_count else ItemStatus.unlabeled
     changed = bool(delete_client_uids or created_count or updated_count)
@@ -679,6 +680,7 @@ def patch_annotations(
         current_user_id=current_user.id,
     )
 
+    db.flush()
     annotation_count = _count_item_annotations(db, item.id)
     item.status = ItemStatus.in_progress if annotation_count else ItemStatus.unlabeled
 

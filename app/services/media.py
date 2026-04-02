@@ -259,6 +259,14 @@ def _safe_static_path(relative_path: str) -> Path:
     return candidate
 
 
+def resolve_media_source_path(item: Item) -> Path | None:
+    try:
+        canonical_path = _safe_static_path(item.path)
+    except MediaProbeError:
+        return None
+    return canonical_path if canonical_path.is_file() else None
+
+
 def _normalize_media_conversion_status(value: str | None, *, kind: ItemKind) -> str:
     allowed = {
         MEDIA_CONVERSION_STATUS_NOT_REQUIRED,
@@ -287,6 +295,10 @@ def _variable_frame_rate_error_message() -> str:
         "Variable frame rate videos are not supported for frame-accurate labeling yet. "
         "Please convert this video to constant frame rate (CFR) before uploading."
     )
+
+
+def _missing_media_source_error_message(item: Item) -> str:
+    return f"Video source was not found: {item.path}"
 
 
 def _job_failure_message(exc: Exception) -> str:
@@ -694,9 +706,9 @@ def ensure_labeling_proxy_video(
     if item.kind != ItemKind.video or not settings.labeling_proxy_enabled:
         return item.path
 
-    source_path = _safe_static_path(item.path)
-    if not source_path.is_file():
-        raise LabelingProxyError(f"Video source was not found: {item.path}")
+    source_path = resolve_media_source_path(item)
+    if source_path is None or not source_path.is_file():
+        raise LabelingProxyError(_missing_media_source_error_message(item))
 
     proxy_relative_path = labeling_proxy_relative_path(item.path)
     proxy_path = _safe_static_path(proxy_relative_path)
@@ -833,17 +845,28 @@ def sync_item_media_conversion_state(item: Item) -> bool:
     assign("frame_rate_mode", current_rate_mode)
     assign("media_conversion_size_bytes", proxy_size_bytes)
 
-    if current_rate_mode == FRAME_RATE_MODE_VFR:
-        assign("media_conversion_status", MEDIA_CONVERSION_STATUS_FAILED)
-        assign("media_conversion_error", _variable_frame_rate_error_message())
-        return changed
-
     if proxy_exists:
         assign("media_conversion_status", MEDIA_CONVERSION_STATUS_READY)
         assign("media_conversion_error", None)
         return changed
 
+    source_path = resolve_media_source_path(item)
+    if source_path is None or not source_path.is_file():
+        assign("media_conversion_status", MEDIA_CONVERSION_STATUS_FAILED)
+        assign("media_conversion_error", _missing_media_source_error_message(item))
+        return changed
+
+    if current_rate_mode == FRAME_RATE_MODE_VFR:
+        assign("media_conversion_status", MEDIA_CONVERSION_STATUS_FAILED)
+        assign("media_conversion_error", _variable_frame_rate_error_message())
+        return changed
+
     if current_status == MEDIA_CONVERSION_STATUS_FAILED:
+        current_error = (item.media_conversion_error or "").strip()
+        if current_error == _missing_media_source_error_message(item):
+            assign("media_conversion_status", MEDIA_CONVERSION_STATUS_PENDING)
+            assign("media_conversion_error", None)
+            return changed
         assign("media_conversion_status", MEDIA_CONVERSION_STATUS_FAILED)
         return changed
 
@@ -1057,9 +1080,9 @@ def _run_media_conversion_job(item_id: int) -> None:
             if item is None or item.kind != ItemKind.video:
                 return
 
-            source_path = _safe_static_path(item.path)
-            if not source_path.is_file():
-                raise LabelingProxyError(f"Video source was not found: {item.path}")
+            source_path = resolve_media_source_path(item)
+            if source_path is None or not source_path.is_file():
+                raise LabelingProxyError(_missing_media_source_error_message(item))
             estimated_reserve_bytes = max(0, int(source_path.stat().st_size or 0))
             maintain_labeling_proxy_storage_budget(
                 reserve_bytes=estimated_reserve_bytes,

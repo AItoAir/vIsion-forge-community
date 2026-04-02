@@ -36,6 +36,7 @@ from .routers import (
     api_export,
     api_notifications,
     api_sam,
+    api_v1,
     auth,
     web_items,
     web_projects,
@@ -43,7 +44,7 @@ from .routers import (
     web_teams,
     ws_collaboration,
 )
-from .security import hash_password, verify_password_and_rehash
+from .security import hash_password, request_uses_api_key_auth, verify_password_and_rehash
 from .services.sam2_jobs import sam2_track_job_runner
 
 
@@ -74,7 +75,7 @@ def validate_runtime_security_settings() -> None:
         "dev-insecure-session-key-change-before-production",
     }
     insecure_password_salts = {
-        "vision-forge-salt",
+        "frame-pin-salt",
         "dev-insecure-password-salt-change-before-production",
     }
     session_cookie_same_site = normalized_session_cookie_same_site(
@@ -663,7 +664,13 @@ def compact_legacy_video_annotations() -> None:
 
 
 def create_core_app() -> FastAPI:
-    return FastAPI(title="VisionForge")
+    return FastAPI(
+        title="FramePin",
+        description=(
+            "Image & Video Annotation for Computer Vision. "
+            "Pin decisions to the exact frame."
+        ),
+    )
 
 
 class RequestGuardMiddleware(BaseHTTPMiddleware):
@@ -679,8 +686,10 @@ class RequestGuardMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith("/static") or request.url.path == "/healthz":
             return await call_next(request)
 
-        ensure_csrf_token(request)
-        if not request_passes_csrf(request):
+        api_key_request = request.url.path.startswith("/api/v1") and request_uses_api_key_auth(request)
+        if not api_key_request:
+            ensure_csrf_token(request)
+        if not api_key_request and not request_passes_csrf(request):
             detail = "CSRF validation failed."
             if request.url.path.startswith("/api"):
                 return JSONResponse(
@@ -786,6 +795,7 @@ def register_core_routers(app: FastAPI) -> None:
     app.include_router(api_notifications.router, prefix="/api")
     app.include_router(api_sam.router, prefix="/api")
     app.include_router(api_export.router, prefix="/api")
+    app.include_router(api_v1.router)
     app.include_router(ws_collaboration.router)
 
 
@@ -827,7 +837,7 @@ def create_app() -> FastAPI:
     def stop_background_workers() -> None:
         sam2_track_job_runner.stop()
 
-    logger.info("VisionForge app initialized", env=settings.env)
+    logger.info("FramePin app initialized", env=settings.env)
     return app
 
 

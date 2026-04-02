@@ -2,6 +2,15 @@
 
 All notable Community Edition release changes are documented in this file.
 
+## v0.1.2 - 2026-04-02
+
+Compared with `v0.1.1`, this release mainly adds:
+
+- Team member role updates, inactive-member visibility, and safer removal controls in team settings.
+- Public API v1 endpoints, related database tables, export job plumbing, and webhook support for integration workflows.
+- Updated my-page and API-key flows, plus harder media-state handling around converted-video labeling.
+- Final FramePin branding updates across the app, startup scripts, env defaults, and public documentation.
+
 ## v0.1.1 - 2026-03-31
 
 Compared with `v0.1.0`, this release mainly adds:
@@ -14,6 +23,6 @@ Compared with `v0.1.0`, this release mainly adds:
 
 ## v0.1.0 - 2026-03-29
 
-- First public VisionForge Community Edition release.
+- First public FramePin Community Edition release.
 - Public runtime profiles for `cpu`, `gpu`, and `cloud`, with `.env` as the canonical runtime configuration file.
 - Alembic-based startup migrations and the browser-played converted-video labeling flow for video items.

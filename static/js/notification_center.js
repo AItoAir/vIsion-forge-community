@@ -56,7 +56,7 @@
     const statusEl = root.querySelector("[data-notification-status]");
     const listEl = root.querySelector("[data-notification-list]");
     const menuEl = root.querySelector(".notification-center-menu");
-    const config = window.VISION_FORGE_NOTIFICATIONS || {};
+    const config = window.FRAME_PIN_NOTIFICATIONS || {};
     const pollIntervalMs = Math.max(
       5000,
       Number(config.pollIntervalMs) || 30000,

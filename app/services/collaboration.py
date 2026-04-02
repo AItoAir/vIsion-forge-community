@@ -339,6 +339,9 @@ class CollaborationHub:
     def _schedule(self, coro) -> None:
         loop = self._loop
         if loop is None or loop.is_closed():
+            close = getattr(coro, "close", None)
+            if callable(close):
+                close()
             return
         asyncio.run_coroutine_threadsafe(coro, loop)
 

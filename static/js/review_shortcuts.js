@@ -27,7 +27,7 @@ function bootReviewShortcuts() {
   );
 
   const currentUrl = window.location.pathname + window.location.search;
-  const cfg = window.VISION_FORGE_CONFIG || {};
+  const cfg = window.FRAME_PIN_CONFIG || {};
   const nextUrl = cfg.nextItemUrl || null;
   const prevChangedItemUrl = cfg.prevChangedItemUrl || null;
   const nextChangedItemUrl = cfg.nextChangedItemUrl || null;

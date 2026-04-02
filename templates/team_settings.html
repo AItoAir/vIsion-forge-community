@@ -15,7 +15,7 @@
       <div class="small text-uppercase text-secondary fw-semibold mb-1">Team settings</div>
       <h1 class="h4 mb-1">{{ team.name }}</h1>
       <p class="text-secondary mb-0">
-        Invite members and assign the right role for their work.
+        Review everyone assigned to this team, adjust roles, and disable access when needed.
       </p>
     </div>
     <div class="small text-secondary">
@@ -23,13 +23,24 @@
     </div>
   </div>
 
+  {% if member_notice %}
+  <div class="alert alert-success" role="alert">
+    {{ member_notice }}
+  </div>
+  {% endif %}
+  {% if member_error %}
+  <div class="alert alert-danger" role="alert">
+    {{ member_error }}
+  </div>
+  {% endif %}
+
   <div class="card bg-dark border-secondary shadow-sm mb-3">
     <div class="card-body">
       <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
         <div>
           <h2 class="h6 mb-1">Invite member</h2>
           <p class="small text-secondary mb-0">
-            This creates or updates the member account immediately.
+            This creates, reactivates, or updates the member account immediately.
           </p>
         </div>
         <div>
@@ -96,7 +107,7 @@
             Invite member
           </button>
           <div class="form-text small mt-0">
-            Existing accounts are reassigned to this team and role.
+            Existing accounts are reassigned, reactivated, and updated to this role.
           </div>
         </div>
       </form>
@@ -176,35 +187,84 @@
         <div>
           <h2 class="h6 mb-1">Members</h2>
           <p class="small text-secondary mb-0">
-            Current members assigned to this team.
+            Everyone assigned to this team is shown here. Inactive members can be restored by inviting the same email again.
           </p>
         </div>
       </div>
       <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
+        <table class="table table-sm align-middle mb-0 team-members-table">
+          <colgroup>
+            <col class="team-members-col-email" />
+            <col class="team-members-col-role" />
+            <col class="team-members-col-status" />
+            <col class="team-members-col-actions" />
+          </colgroup>
           <thead>
             <tr>
               <th>Email</th>
               <th>Role</th>
               <th>Status</th>
+              <th class="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
             {% for user in members %}
             <tr>
-              <td>{{ user.email }}</td>
-              <td>{{ role_display_names.get(user.role.value, user.role.value) }}</td>
+              <td class="team-member-email">{{ user.email }}</td>
               <td>
+                {% if user.role.value == "system_admin" %}
+                <div class="team-member-role-label">{{ role_display_names.get(user.role.value, user.role.value) }}</div>
+                <div class="team-member-role-hint">Managed outside team settings.</div>
+                {% elif not user.is_active %}
+                <div class="team-member-role-label">{{ role_display_names.get(user.role.value, user.role.value) }}</div>
+                <div class="team-member-role-hint">Re-invite this email to restore access.</div>
+                {% else %}
+                <form
+                  method="post"
+                  action="{{ url_for('update_team_member_role', team_id=team.id, user_id=user.id) }}"
+                  class="team-member-role-form"
+                >
+                  <select
+                    class="form-select form-select-sm team-member-role-select"
+                    name="role"
+                    aria-label="Role for {{ user.email }}"
+                  >
+                    <option value="annotator" {% if user.role.value == "annotator" %}selected{% endif %}>Annotator</option>
+                    <option value="reviewer" {% if user.role.value == "reviewer" %}selected{% endif %}>Reviewer</option>
+                    <option value="project_admin" {% if user.role.value == "project_admin" %}selected{% endif %}>Project admin</option>
+                  </select>
+                  <button type="submit" class="btn btn-sm btn-outline-light team-member-role-save">Save</button>
+                </form>
+                {% endif %}
+              </td>
+              <td class="team-member-status-cell">
                 {% if user.is_active %}
                 <span class="badge text-bg-success">active</span>
                 {% else %}
                 <span class="badge text-bg-secondary">inactive</span>
                 {% endif %}
               </td>
+              <td class="text-end team-member-actions-cell">
+                {% if user.role.value == "system_admin" %}
+                <span class="small text-secondary">Unavailable</span>
+                {% elif not user.is_active %}
+                <span class="small text-secondary">Re-invite to reactivate</span>
+                {% else %}
+                <form
+                  method="post"
+                  action="{{ url_for('remove_team_member', team_id=team.id, user_id=user.id) }}"
+                  class="d-inline"
+                >
+                  <button type="submit" class="btn btn-sm btn-outline-danger">
+                    Remove
+                  </button>
+                </form>
+                {% endif %}
+              </td>
             </tr>
             {% else %}
             <tr>
-              <td colspan="3" class="text-center text-muted py-4">
+              <td colspan="4" class="text-center text-muted py-4">
                 No members in this team yet.
               </td>
             </tr>

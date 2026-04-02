@@ -22,7 +22,12 @@ from ..models import (
     UserRole,
 )
 from ..security import ensure_project_team_access, require_roles
-from ..services.media import labeling_proxy_storage_summary_payload
+from ..services.media import (
+    build_annotation_media_state,
+    labeling_proxy_storage_summary_payload,
+    resolve_media_source_path,
+    sync_item_media_conversion_state,
+)
 
 router = APIRouter(include_in_schema=False)
 
@@ -343,6 +348,37 @@ def _build_project_items_context(
         status=status,
         label_class_id=effective_label_class_id,
     )
+    item_preview_state: dict[int, dict[str, object]] = {}
+    items_changed = False
+    for item in items:
+        if item.kind == ItemKind.video:
+            if sync_item_media_conversion_state(item):
+                db.add(item)
+                items_changed = True
+            media_state = build_annotation_media_state(item)
+            source_available = resolve_media_source_path(item) is not None
+            preview_available = media_state.ready or source_available
+            item_preview_state[item.id] = {
+                "available": preview_available,
+                "variant": "display" if media_state.ready else "original",
+                "missing_reason": (
+                    (item.media_conversion_error or "").strip()
+                    or f"Video source was not found: {item.path}"
+                ),
+            }
+            continue
+
+        source_available = resolve_media_source_path(item) is not None
+        item_preview_state[item.id] = {
+            "available": source_available,
+            "variant": "original",
+            "missing_reason": (
+                None if source_available else f"Image source was not found: {item.path}"
+            ),
+        }
+
+    if items_changed:
+        db.commit()
 
     total_item_count = len(project.items)
     filtered_item_count = len(items)
@@ -354,6 +390,7 @@ def _build_project_items_context(
         "request": request,
         "project": project,
         "items": items,
+        "item_preview_state": item_preview_state,
         "item_label_summaries": _load_item_label_summaries(db, items),
         "progress": progress,
         "status_filter": status,

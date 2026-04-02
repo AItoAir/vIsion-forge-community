@@ -42,8 +42,8 @@ HEALTH_URL="http://127.0.0.1:${PORT}/healthz"
 KEEP_RUNNING="${LF_VERIFY_KEEP_RUNNING:-0}"
 SKIP_ENV_COPY="${LF_VERIFY_SKIP_ENV_COPY:-0}"
 VERIFICATION_PASSED=0
-VERIFICATION_PROJECT_NAME="vision-forge-verify-${PROFILE}-$$"
-VERIFICATION_ENV_FILE="$(mktemp "${TMPDIR:-/tmp}/vision-forge-verify-${PROFILE}-XXXXXX.env")"
+VERIFICATION_PROJECT_NAME="frame-pin-verify-${PROFILE}-$$"
+VERIFICATION_ENV_FILE="$(mktemp "${TMPDIR:-/tmp}/frame-pin-verify-${PROFILE}-XXXXXX.env")"
 ORIGINAL_LF_ENV_FILE="${LF_ENV_FILE:-}"
 
 ensure_env_file() {
@@ -89,7 +89,7 @@ write_verification_env_file() {
 run_manage() {
   (
     cd "${REPO_ROOT}"
-    ./manage_vision_forge.sh "${PROFILE}" "$@"
+    ./manage_frame_pin.sh "${PROFILE}" "$@"
   )
 }
 
@@ -136,8 +136,8 @@ cleanup() {
 trap cleanup EXIT
 
 main() {
-  if [[ ! -x "${REPO_ROOT}/manage_vision_forge.sh" ]]; then
-    echo "ERROR: Management script was not found or is not executable: ${REPO_ROOT}/manage_vision_forge.sh" >&2
+  if [[ ! -x "${REPO_ROOT}/manage_frame_pin.sh" ]]; then
+    echo "ERROR: Management script was not found or is not executable: ${REPO_ROOT}/manage_frame_pin.sh" >&2
     return 1
   fi
 
@@ -149,7 +149,7 @@ main() {
 
   export LF_SKIP_DOCKER_PRUNE="${LF_SKIP_DOCKER_PRUNE:-1}"
 
-  echo "[INFO] Running VisionForge startup verification..."
+  echo "[INFO] Running FramePin startup verification..."
   echo "[INFO] Profile: ${PROFILE}"
   echo "[INFO] Project name: ${VERIFICATION_PROJECT_NAME}"
   echo "[INFO] Health URL: ${HEALTH_URL}"
