@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Questions, onboarding, and deployment help
+    url: https://github.com/AItoAir/frame-pin-community/discussions
+    about: Use Discussions for getting started, self-hosted deployment checks, roadmap feedback, and general product questions.
   - name: Commercial / enterprise inquiry
     url: mailto:licensing@aitoair.com?subject=FramePin%20licensing%20inquiry
     about: Contact AItoAir about licensing, production rollout, support, or customization.
