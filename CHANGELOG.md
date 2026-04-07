@@ -12,6 +12,8 @@ Compared with `v0.1.2`, this release mainly adds:
 - Safe project deletion with full cleanup, configurable team active-user seat limits, and sturdier upload validation and preview fallbacks.
 - Annotation workspace updates for quieter teammate presence, faster autosave, unsaved polygon guards, and browser-safe HEIC display fallbacks.
 - New export tooling for basename-only project item paths and `lf_project_v2` to COCO conversion.
+- Follow-up patch: team invite redirects now preserve the active-user seat-limit error state so admins see the correct team settings warning when the limit is reached.
+- Follow-up patch: the project delete confirmation modal now uses the correct singular or plural copy when it summarizes hidden sample files.
 
 ## v0.1.2 - 2026-04-02
 

@@ -593,7 +593,7 @@ See LICENSE for the project-specific license terms.
           </ol>
           {% if project_delete_summary.remaining_item_count %}
           <div class="form-text mt-2">
-            {{ project_delete_summary.remaining_item_count }} more file{% if project_delete_summary.remaining_item_count != 1 %}s{% endif %} are not shown here.
+            {{ project_delete_summary.remaining_item_count }} more file{% if project_delete_summary.remaining_item_count != 1 %}s{% endif %} {% if project_delete_summary.remaining_item_count == 1 %}is{% else %}are{% endif %} not shown here.
           </div>
           {% endif %}
           {% else %}

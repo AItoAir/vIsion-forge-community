@@ -154,7 +154,7 @@ def _team_settings_redirect_url(
     params: dict[str, str] = {}
     if notice in TEAM_SETTINGS_NOTICE_MESSAGES:
         params["notice"] = str(notice)
-    if error in TEAM_SETTINGS_ERROR_MESSAGES:
+    if _team_settings_error_message(error) is not None:
         params["error"] = str(error)
 
     base_url = str(request.url_for("team_settings", team_id=team_id))
