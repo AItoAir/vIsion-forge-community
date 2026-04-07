@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 import hashlib
@@ -217,7 +221,7 @@ class PublicApiV1Tests(unittest.TestCase):
 
     def test_item_create_get_media_and_delete(self) -> None:
         with patch(
-            "app.routers.api_v1.probe_media_metadata",
+            "app.services.uploads.probe_media_metadata",
             return_value=SimpleNamespace(
                 width=320,
                 height=240,
@@ -250,6 +254,120 @@ class PublicApiV1Tests(unittest.TestCase):
 
         deleted = self.client.delete(f"/api/v1/items/{item_id}", headers=self._auth_headers())
         self.assertEqual(204, deleted.status_code)
+
+    def test_get_item_media_display_self_heals_legacy_heic_images(self) -> None:
+        legacy_bytes = b"legacy-heic"
+        legacy_path = self.seed_upload_dir / "legacy.HEIC"
+        legacy_path.write_bytes(legacy_bytes)
+        legacy_item = Item(
+            project_id=self.project.id,
+            kind=ItemKind.image,
+            path=str(legacy_path.relative_to(self.static_dir)).replace("\\", "/"),
+            sha256=hashlib.sha256(legacy_bytes).hexdigest(),
+            w=512,
+            h=512,
+            status=ItemStatus.unlabeled,
+        )
+        self.db.add(legacy_item)
+        self.db.commit()
+        self.db.refresh(legacy_item)
+
+        def _fake_write_preview(_source_path: Path, preview_path: Path) -> None:
+            preview_path.parent.mkdir(parents=True, exist_ok=True)
+            preview_path.write_bytes(b"preview-png")
+
+        with patch(
+            "app.services.media._write_legacy_image_display_preview",
+            side_effect=_fake_write_preview,
+        ):
+            response = self.client.get(
+                f"/api/v1/items/{legacy_item.id}/media?variant=display",
+                headers=self._auth_headers(),
+            )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("image/png", response.headers.get("content-type"))
+        self.assertEqual(b"preview-png", response.content)
+
+        self.db.expire_all()
+        refreshed_item = self.db.get(Item, legacy_item.id)
+        self.assertEqual(
+            "uploads/project_1/legacy.display_preview.png",
+            refreshed_item.display_path,
+        )
+
+    def test_item_create_rejects_unsupported_standard_image_format(self) -> None:
+        created = self.client.post(
+            f"/api/v1/projects/{self.project.id}/items",
+            headers=self._auth_headers(),
+            files={"file": ("upload.HEIC", b"uploaded-image", "image/heic")},
+        )
+
+        self.assertEqual(400, created.status_code)
+        self.assertIn("Unsupported image format", created.json()["detail"])
+
+        listed = self.client.get(
+            f"/api/v1/projects/{self.project.id}/items",
+            headers=self._auth_headers(),
+        )
+        self.assertEqual(200, listed.status_code)
+        self.assertEqual(1, len(listed.json()))
+
+    def test_medical_item_upload_keeps_original_and_serves_display_preview(self) -> None:
+        preview_bytes = b"rendered-dicom-preview"
+
+        def _fake_build_medical_preview(source_path: Path):
+            preview_path = source_path.with_name(f"{source_path.stem}.medical_preview.png")
+            preview_path.write_bytes(preview_bytes)
+            return SimpleNamespace(
+                kind=ItemKind.image,
+                display_path=preview_path,
+                source_media_type="dicom",
+                metadata=SimpleNamespace(
+                    width=256,
+                    height=256,
+                    duration_sec=None,
+                    fps=None,
+                    frame_rate_mode=None,
+                ),
+            )
+
+        with patch("app.services.uploads.build_medical_preview", side_effect=_fake_build_medical_preview):
+            created = self.client.post(
+                f"/api/v1/projects/{self.project.id}/items",
+                headers=self._auth_headers(),
+                files={"file": ("study.dcm", b"dicom-original-bytes", "application/dicom")},
+            )
+
+        self.assertEqual(201, created.status_code)
+        created_item = created.json()["item"]
+        item_id = created_item["id"]
+        self.assertEqual("uploads/project_1/study.dcm", created_item["path"])
+        self.assertEqual("dicom", created_item["source_media_type"])
+        self.assertTrue(
+            (created_item["display_path"] or "").endswith(".medical_preview.png")
+        )
+
+        original = self.client.get(
+            f"/api/v1/items/{item_id}/media",
+            headers=self._auth_headers(),
+        )
+        self.assertEqual(200, original.status_code)
+        self.assertEqual(b"dicom-original-bytes", original.content)
+
+        display = self.client.get(
+            f"/api/v1/items/{item_id}/media?variant=display",
+            headers=self._auth_headers(),
+        )
+        self.assertEqual(200, display.status_code)
+        self.assertEqual(preview_bytes, display.content)
+
+        preview_path = self.static_dir / created_item["display_path"]
+        original_path = self.static_dir / created_item["path"]
+        deleted = self.client.delete(f"/api/v1/items/{item_id}", headers=self._auth_headers())
+        self.assertEqual(204, deleted.status_code)
+        self.assertFalse(original_path.exists())
+        self.assertFalse(preview_path.exists())
 
     def test_annotations_review_and_export_flow(self) -> None:
         annotations = self.client.put(

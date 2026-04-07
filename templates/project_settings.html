@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: AItoAir, Inc.
+SPDX-License-Identifier: BUSL-1.1
+See LICENSE for the project-specific license terms.
+-->
+
 {% extends "base.html" %}
 
 {% block extra_head %}
@@ -101,6 +107,41 @@
     padding: 1rem;
   }
 
+  .project-delete-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .project-delete-metric {
+    padding: 0.85rem 0.95rem;
+    border: 1px solid rgba(220, 53, 69, 0.25);
+    border-radius: 0.85rem;
+    background: rgba(220, 53, 69, 0.08);
+  }
+
+  .project-delete-metric-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.62);
+  }
+
+  .project-delete-metric-value {
+    margin-top: 0.25rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+
+  .project-delete-sample-list {
+    margin: 0;
+    padding-left: 1.15rem;
+  }
+
+  .project-delete-sample-item + .project-delete-sample-item {
+    margin-top: 0.35rem;
+  }
+
   @media (max-width: 1199.98px) {
     .project-label-class-create-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -164,6 +205,37 @@
         <button type="submit" class="btn btn-sm btn-primary">Save project</button>
       </div>
     </form>
+  </div>
+</div>
+
+<div class="card bg-dark border-danger mb-4">
+  <div class="card-body">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-start gap-3">
+      <div>
+        <h2 class="small text-uppercase text-danger mb-2">Danger zone</h2>
+        <h3 class="h6 mb-2">Delete this project</h3>
+        <p class="small text-secondary mb-0">
+          Deleting a project permanently removes its uploaded source media, annotations,
+          label classes, review history, and related project records.
+        </p>
+      </div>
+      <div class="text-lg-end">
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-danger"
+          data-bs-toggle="modal"
+          data-bs-target="#deleteProjectModal"
+        >
+          Delete project
+        </button>
+      </div>
+    </div>
+
+    {% if project_delete_error %}
+    <div class="alert alert-danger mt-3 mb-0" role="alert">
+      {{ project_delete_error }}
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -460,6 +532,121 @@
     </div>
   </div>
 </div>
+
+<div
+  class="modal fade"
+  id="deleteProjectModal"
+  tabindex="-1"
+  aria-labelledby="deleteProjectModalLabel"
+  aria-hidden="true"
+  data-open-on-load="{% if project_delete_error %}true{% else %}false{% endif %}"
+>
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content bg-dark border-danger">
+      <div class="modal-header border-danger-subtle">
+        <div>
+          <h2 class="modal-title fs-5" id="deleteProjectModalLabel">Delete project</h2>
+          <p class="small text-secondary mb-0">
+            Review the project contents before permanently deleting everything.
+          </p>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning" role="alert">
+          <strong>{{ project.name }}</strong> will be permanently deleted. This action cannot be undone.
+        </div>
+
+        <div class="project-delete-metrics mb-3">
+          <div class="project-delete-metric">
+            <div class="project-delete-metric-label">Source items</div>
+            <div class="project-delete-metric-value" id="project-delete-total-items">
+              {{ project_delete_summary.item_count }}
+            </div>
+          </div>
+          <div class="project-delete-metric">
+            <div class="project-delete-metric-label">Annotations</div>
+            <div class="project-delete-metric-value" id="project-delete-total-annotations">
+              {{ project_delete_summary.annotation_count }}
+            </div>
+          </div>
+          <div class="project-delete-metric">
+            <div class="project-delete-metric-label">Label classes</div>
+            <div class="project-delete-metric-value" id="project-delete-total-label-classes">
+              {{ project_delete_summary.label_class_count }}
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="small text-uppercase text-secondary mb-2">Sample source data</div>
+          {% if project_delete_summary.sample_items %}
+          <ol class="project-delete-sample-list small mb-0" id="project-delete-sample-items">
+            {% for sample_item in project_delete_summary.sample_items %}
+            <li class="project-delete-sample-item">
+              <code>{{ sample_item.display_name }}</code>
+              <span class="badge rounded-pill text-bg-secondary ms-1">
+                {{ sample_item.kind.value }}
+              </span>
+            </li>
+            {% endfor %}
+          </ol>
+          {% if project_delete_summary.remaining_item_count %}
+          <div class="form-text mt-2">
+            {{ project_delete_summary.remaining_item_count }} more file{% if project_delete_summary.remaining_item_count != 1 %}s{% endif %} are not shown here.
+          </div>
+          {% endif %}
+          {% else %}
+          <div class="small text-secondary">
+            No uploaded source data is currently stored in this project.
+          </div>
+          {% endif %}
+        </div>
+
+        <form
+          method="post"
+          action="{{ url_for('delete_project', project_id=project.id) }}"
+          id="delete-project-form"
+        >
+          <label class="form-label small" for="delete-project-confirmation">
+            Type <code>{{ project_delete_expected_name }}</code> to confirm
+          </label>
+          <input
+            type="text"
+            class="form-control"
+            id="delete-project-confirmation"
+            name="confirmation_name"
+            autocomplete="off"
+            spellcheck="false"
+            data-project-delete-match
+            data-project-delete-expected="{{ project_delete_expected_name }}"
+            required
+          />
+          <div class="form-text">
+            Deleting this project removes all stored source data and annotation work for it.
+          </div>
+          {% if project_delete_error %}
+          <div class="alert alert-danger mt-3 mb-0" role="alert">
+            {{ project_delete_error }}
+          </div>
+          {% endif %}
+        </form>
+      </div>
+      <div class="modal-footer border-danger-subtle">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button
+          type="submit"
+          class="btn btn-danger"
+          form="delete-project-form"
+          data-project-delete-submit
+          disabled
+        >
+          Delete project permanently
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -514,6 +701,41 @@
       });
       window.__projectSettingsBBoxPresetBound = true;
     }
+
+    const initDeleteProjectModal = () => {
+      const modalEl = document.getElementById("deleteProjectModal");
+      if (!modalEl || modalEl.dataset.deleteProjectInit === "true") {
+        if (modalEl?.dataset.openOnLoad === "true" && window.bootstrap?.Modal) {
+          window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+        return;
+      }
+
+      const confirmationInput = modalEl.querySelector("[data-project-delete-match]");
+      const submitButton = modalEl.querySelector("[data-project-delete-submit]");
+      if (!confirmationInput || !submitButton) {
+        return;
+      }
+
+      const expectedValue =
+        confirmationInput.getAttribute("data-project-delete-expected") || "";
+
+      const syncDeleteState = () => {
+        const matches = confirmationInput.value.trim() === expectedValue;
+        submitButton.disabled = !matches;
+      };
+
+      confirmationInput.addEventListener("input", syncDeleteState);
+      confirmationInput.addEventListener("change", syncDeleteState);
+      modalEl.dataset.deleteProjectInit = "true";
+      syncDeleteState();
+
+      if (modalEl.dataset.openOnLoad === "true" && window.bootstrap?.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      }
+    };
+
+    initDeleteProjectModal();
   })();
 </script>
 {% endblock %}

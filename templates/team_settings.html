@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: AItoAir, Inc.
+SPDX-License-Identifier: BUSL-1.1
+See LICENSE for the project-specific license terms.
+-->
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -18,8 +24,15 @@
         Review everyone assigned to this team, adjust roles, and disable access when needed.
       </p>
     </div>
-    <div class="small text-secondary">
-      {{ members | length }} member{% if members | length != 1 %}s{% endif %}
+    <div class="text-lg-end">
+      <div class="small text-secondary">
+        {{ members | length }} member{% if members | length != 1 %}s{% endif %}
+      </div>
+      {% if team_active_user_limit %}
+      <div class="small {% if team_active_user_limit_reached %}text-warning{% else %}text-secondary{% endif %}">
+        {{ active_user_count }} / {{ team_active_user_limit }} active user{% if team_active_user_limit != 1 %}s{% endif %}
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -42,6 +55,14 @@
           <p class="small text-secondary mb-0">
             This creates, reactivates, or updates the member account immediately.
           </p>
+          {% if team_active_user_limit %}
+          <p class="small {% if team_active_user_limit_reached %}text-warning{% else %}text-secondary{% endif %} mb-0 mt-2">
+            {{ active_user_count }} of {{ team_active_user_limit }} active user seat{% if team_active_user_limit != 1 %}s{% endif %} currently in use for this team.
+            {% if team_active_user_limit_reached %}
+            Disable another active account before inviting someone else.
+            {% endif %}
+          </p>
+          {% endif %}
         </div>
         <div>
           <button

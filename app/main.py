@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 import time
@@ -329,6 +333,18 @@ def ensure_runtime_schema() -> None:
                 table_name="item",
                 column_name="annotation_revision",
                 ddl="ALTER TABLE item ADD COLUMN annotation_revision INTEGER DEFAULT 0 NOT NULL",
+            )
+            _ensure_missing_column(
+                connection=conn,
+                table_name="item",
+                column_name="display_path",
+                ddl="ALTER TABLE item ADD COLUMN display_path VARCHAR(1024)",
+            )
+            _ensure_missing_column(
+                connection=conn,
+                table_name="item",
+                column_name="source_media_type",
+                ddl="ALTER TABLE item ADD COLUMN source_media_type VARCHAR(32)",
             )
             _ensure_missing_column(
                 connection=conn,

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: AItoAir, Inc.
+SPDX-License-Identifier: BUSL-1.1
+See LICENSE for the project-specific license terms.
+-->
+
 {% extends "base.html" %}
 
 {% block extra_head %}
@@ -575,11 +581,11 @@
 
 {% block extra_js %}
 {% if item.kind.value != "video" or media_conversion.ready %}
-<script type="module" src="{{ url_for('static', path='js/annotation_canvas.js') }}?v=20260330_comment_mentions"></script>
-<script type="module" src="{{ url_for('static', path='js/review_shortcuts.js') }}?v=20260330_comment_mentions"></script>
+<script type="module" src="{{ static_asset_url(request, 'js/annotation_canvas.js') }}"></script>
+<script type="module" src="{{ static_asset_url(request, 'js/review_shortcuts.js') }}"></script>
 {% endif %}
 {% if item.kind.value == "video" %}
-<script type="module" src="{{ url_for('static', path='js/media_conversion_status.js') }}?v=20260328_media_conversion_status"></script>
+<script type="module" src="{{ static_asset_url(request, 'js/media_conversion_status.js') }}"></script>
 {% endif %}
 <script>
   const framePinConfig = {

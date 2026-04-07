@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 import unittest
@@ -11,6 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import settings
 from app.database import Base, get_db
 from app.models import Project, Team, User, UserRole
 from app.routers import web_teams
@@ -31,6 +36,8 @@ class TeamManagementRoutesTests(unittest.TestCase):
             autocommit=False,
             expire_on_commit=False,
         )
+        self.original_team_active_user_limit = settings.team_active_user_limit
+        settings.team_active_user_limit = 10
         Base.metadata.create_all(bind=self.engine)
         self.db = self.SessionLocal()
 
@@ -128,6 +135,7 @@ class TeamManagementRoutesTests(unittest.TestCase):
         self.client.close()
         self.db.close()
         self.engine.dispose()
+        settings.team_active_user_limit = self.original_team_active_user_limit
 
     def _override_get_db(self):
         db = self.SessionLocal()
@@ -183,6 +191,53 @@ class TeamManagementRoutesTests(unittest.TestCase):
         self.assertIn(self.member.email, page.text)
         self.assertIn(self.inactive_member.email, page.text)
         self.assertIn("inactive", page.text)
+        self.assertIn("3 / 10 active users", page.text)
+
+    def test_invite_new_member_is_blocked_when_active_user_limit_is_reached(self) -> None:
+        settings.team_active_user_limit = 3
+
+        response = self.client.post(
+            f"/teams/{self.team.id}/invite",
+            data={
+                "email": "new-member@example.com",
+                "password": "FreshPass123",
+                "role": "annotator",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(303, response.status_code)
+        self.assertIn(
+            "error=active_user_limit_reached",
+            response.headers.get("location", ""),
+        )
+
+        self.db.expire_all()
+        self.assertIsNone(
+            self.db.query(User).filter(User.email == "new-member@example.com").one_or_none()
+        )
+
+    def test_invite_existing_active_member_still_updates_when_limit_is_reached(self) -> None:
+        settings.team_active_user_limit = 3
+
+        response = self.client.post(
+            f"/teams/{self.team.id}/invite",
+            data={
+                "email": self.member.email,
+                "password": "FreshPass123",
+                "role": "reviewer",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(303, response.status_code)
+        self.assertIn("notice=invited", response.headers.get("location", ""))
+
+        self.db.expire_all()
+        member = self.db.get(User, self.member.id)
+        self.assertIsNotNone(member)
+        self.assertEqual(UserRole.reviewer, member.role)
+        self.assertTrue(verify_password("FreshPass123", member.password_hash))
 
     def test_remove_team_member_deactivates_member_without_clearing_team(self) -> None:
         response = self.client.post(

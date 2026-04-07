@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 [CmdletBinding()]
 param(
     [string]$Profile = ""
@@ -155,6 +159,93 @@ function Test-Healthz {
     }
 }
 
+function Get-VerificationImageReferences {
+    param(
+        [string]$ExcludeProjectName = ""
+    )
+
+    $temporaryImagePrefixes = @(
+        "frame-pin-verify-",
+        "frame-pin-review-comments-"
+    )
+
+    $output = & docker image ls --format "{{.Repository}}|{{.Tag}}"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to list Docker images while cleaning temporary verification artifacts."
+    }
+
+    $references = @()
+    foreach ($line in $output) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+
+        $parts = $line.Split("|", 2)
+        if ($parts.Count -ne 2) {
+            continue
+        }
+
+        $repository = $parts[0].Trim()
+        $tag = $parts[1].Trim()
+        $matchesTemporaryPrefix = $false
+        foreach ($prefix in $temporaryImagePrefixes) {
+            if ($repository.StartsWith($prefix)) {
+                $matchesTemporaryPrefix = $true
+                break
+            }
+        }
+
+        if (-not $matchesTemporaryPrefix) {
+            continue
+        }
+
+        if ($ExcludeProjectName -and $repository.StartsWith("$ExcludeProjectName-")) {
+            continue
+        }
+
+        if ($tag -eq "<none>") {
+            $references += $repository
+            continue
+        }
+
+        $references += "${repository}:${tag}"
+    }
+
+    return @($references | Sort-Object -Unique)
+}
+
+function Remove-VerificationImages {
+    param(
+        [string]$ExcludeProjectName = ""
+    )
+
+    try {
+        $references = Get-VerificationImageReferences -ExcludeProjectName $ExcludeProjectName
+    }
+    catch {
+        Write-Warning $_.Exception.Message
+        return
+    }
+
+    if (@($references).Count -eq 0) {
+        Write-Host "[INFO] No verification-only Docker images to remove."
+        return
+    }
+
+    foreach ($reference in $references) {
+        Write-Host "[INFO] Removing temporary Docker image: $reference"
+        & docker image rm $reference *> $null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Failed to remove temporary Docker image '$reference'. It may still be in use."
+        }
+    }
+
+    & docker image prune -f *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Failed to prune dangling Docker images after temporary image cleanup."
+    }
+}
+
 try {
     if (-not (Test-Path -LiteralPath $ManageScript)) {
         throw "Management script was not found: $ManageScript"
@@ -207,6 +298,13 @@ finally {
     }
     else {
         Write-Host "[INFO] Leaving the stack running because LF_VERIFY_KEEP_RUNNING is enabled."
+    }
+
+    if ($KeepRunning) {
+        Remove-VerificationImages -ExcludeProjectName $VerificationProjectName
+    }
+    else {
+        Remove-VerificationImages
     }
 
     if ($null -ne $OriginalSkipDockerPrune) {

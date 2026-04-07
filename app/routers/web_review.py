@@ -1,11 +1,13 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -28,13 +30,12 @@ from ..services.comment_mentions import (
     render_comment_html,
 )
 from ..services.notifications import create_comment_mention_notifications
+from ..template_utils import create_templates
 from .web_items import _get_prev_next_item_ids, _item_media_conversion_payload
 
 router = APIRouter(include_in_schema=False)
 
-templates = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent.parent.parent / "templates")
-)
+templates = create_templates()
 
 
 def _annotation_flags_snapshot(annotation: Annotation) -> dict[str, bool]:
@@ -314,13 +315,8 @@ def review_item(
         auto_enqueue=item.kind.value == "video",
         record_access=item.kind.value == "video",
     )
-    display_media_variant = (
-        "display"
-        if item.kind.value == "video" and media_conversion["ready"]
-        else "original"
-    )
     display_media_url = str(
-        request.url_for("item_media", item_id=item.id, variant=display_media_variant)
+        request.url_for("item_media", item_id=item.id, variant="display")
     )
     mention_candidates = build_project_mention_candidates(db, project)
 

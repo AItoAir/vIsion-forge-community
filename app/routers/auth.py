@@ -1,12 +1,14 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from ipaddress import ip_address
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,12 +27,11 @@ from ..security import (
     verify_password,
     verify_password_and_rehash,
 )
+from ..template_utils import create_templates
 
 router = APIRouter(include_in_schema=False)
 
-templates = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent.parent.parent / "templates")
-)
+templates = create_templates()
 
 MY_PAGE_API_KEY_TOKEN_SESSION_KEY = "_my_page_api_key_token"
 MY_PAGE_API_KEY_NAME_SESSION_KEY = "_my_page_api_key_name"

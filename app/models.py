@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 import enum
@@ -158,6 +162,8 @@ class Item(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
     kind: Mapped[ItemKind] = mapped_column(Enum(ItemKind), nullable=False)
     path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    display_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    source_media_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     w: Mapped[int] = mapped_column(Integer, nullable=False)
     h: Mapped[int] = mapped_column(Integer, nullable=False)

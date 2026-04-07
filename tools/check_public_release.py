@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 import re
@@ -189,7 +193,6 @@ def find_metadata_violations(paths: list[str]) -> list[str]:
 
     required_release_docs = {
         "LICENSE",
-        "LICENSE.BSL-1.1",
         "COMMERCIAL_LICENSE.md",
         "THIRD_PARTY_NOTICES.md",
         "MODEL_LICENSES.md",
@@ -201,10 +204,15 @@ def find_metadata_violations(paths: list[str]) -> list[str]:
             + ", ".join(missing_release_docs)
         )
 
-    dockerfile_text = read_repo_text("Dockerfile")
-    if "LICENSE.BSL-1.1" not in dockerfile_text:
+    if "LICENSE.BSL-1.1" in tracked:
         violations.append(
-            "Dockerfile must include LICENSE.BSL-1.1 in the distributed image"
+            "root LICENSE.BSL-1.1 should not be distributed; fold the canonical BUSL text into LICENSE"
+        )
+
+    dockerfile_text = read_repo_text("Dockerfile")
+    if "COPY LICENSE " not in dockerfile_text:
+        violations.append(
+            "Dockerfile must include LICENSE in the distributed image"
         )
 
     app_main_text = read_repo_text("app/main.py")

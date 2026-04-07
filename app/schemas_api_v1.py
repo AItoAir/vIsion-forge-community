@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -129,6 +133,8 @@ class ItemReadV1(BaseModel):
     project_id: int
     kind: ItemKind
     path: str
+    display_path: str | None = None
+    source_media_type: str | None = None
     sha256: str
     w: int
     h: int

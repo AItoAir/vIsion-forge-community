@@ -1,22 +1,31 @@
 # FramePin Community Edition
 
-Image & Video Annotation for Computer Vision
+Image, Video, and Medical Preview Annotation for Computer Vision
+
+- Free evaluation: use Community Edition for hands-on local evaluation, prototyping, and internal workflow review. Start at the [English landing page](https://aitoair.com/en/frame-pin-en/?utm_source=github&utm_medium=referral&utm_campaign=framepin_repo&utm_content=readme_free_eval).
+- Commercial consultation required: production deployment, on-prem rollout planning, OEM or redistribution rights, white-label or customer-facing rollout, enterprise support, and custom development should start at the [commercial contact page](https://aitoair.com/en/contact-us-en/?utm_source=github&utm_medium=referral&utm_campaign=framepin_repo&utm_content=readme_commercial).
+- Start here: [overview and demos](https://aitoair.com/en/frame-pin-en/?utm_source=github&utm_medium=referral&utm_campaign=framepin_repo&utm_content=readme_overview) | [commercial contact](https://aitoair.com/en/contact-us-en/?utm_source=github&utm_medium=referral&utm_campaign=framepin_repo&utm_content=readme_cta) | [quick start](#quick-start)
 
 FramePin is an image and video annotation tool for computer vision teams.
 It helps teams pin objects, decisions, and review context to the exact frame where they matter.
+It can also ingest DICOM and NIfTI sources by converting them into annotation-ready
+PNG or MP4 previews while preserving the original upload for export.
+
+What this means in practice:
+
+- standard image and video uploads, plus DICOM and NIfTI medical uploads, can all enter the same project flow
+- medical uploads are rendered into browser-ready PNG or MP4 previews without changing the core labeling workspace
+- the original DICOM, DICOM ZIP, or NIfTI source file is retained for downstream export and traceability
 
 Pin decisions to the exact frame.
 
 Release history and highlights live in [CHANGELOG.md](CHANGELOG.md).
 
-Repository note: the GitHub repository slug may still temporarily appear as
-`vision-forge-community` until the manual rename to `framepins` is completed.
-
 ## Commercial deployment and contact
 
 If you need production use beyond the Additional Use Grant, on-prem rollout
 planning, enterprise support, OEM or redistribution rights, or custom
-development, contact [licensing@aitoair.com](mailto:licensing@aitoair.com).
+development, start at the [commercial contact page](https://aitoair.com/en/contact-us-en/?utm_source=github&utm_medium=referral&utm_campaign=framepin_repo&utm_content=readme_commercial_section) or email [licensing@aitoair.com](mailto:licensing@aitoair.com).
 
 See also:
 
@@ -35,13 +44,35 @@ See also:
 
 ## Quick answers
 
-- Evaluating or prototyping FramePin? Start with the Community Edition
-  profiles and quick start below.
+- Evaluating or prototyping FramePin? Start with the [English landing page](https://aitoair.com/en/frame-pin-en/?utm_source=github&utm_medium=referral&utm_campaign=framepin_repo&utm_content=readme_quick_answers), then use the Community Edition profiles and quick start below.
 - Planning a production, on-prem, OEM, white-label, or customer-facing
-  deployment? Contact [licensing@aitoair.com](mailto:licensing@aitoair.com).
-- Need the exact legal terms? Review [LICENSE](LICENSE),
-  [LICENSE.BSL-1.1](LICENSE.BSL-1.1), and
+  deployment? Start at the [commercial contact page](https://aitoair.com/en/contact-us-en/?utm_source=github&utm_medium=referral&utm_campaign=framepin_repo&utm_content=readme_quick_answers_commercial) or email [licensing@aitoair.com](mailto:licensing@aitoair.com).
+- Need the exact legal terms? Review [LICENSE](LICENSE) and
   [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
+
+## Medical imaging ingest
+
+FramePin can ingest these medical-imaging source formats during upload:
+
+- `.dcm` / `.dicom`
+- `.zip` containing a single DICOM series
+- `.nii`
+- `.nii.gz`
+
+Upload behavior:
+
+- single-frame DICOM studies become annotation-ready PNG items
+- DICOM series packaged as a ZIP archive become annotation-ready MP4 slice previews
+- multi-frame DICOM studies become annotation-ready MP4 items
+- volumetric NIfTI uploads become MP4 slice previews for 2D review and labeling
+- converted medical previews use the same image or video labeling workspace as standard uploads
+- the original DICOM, DICOM ZIP, or NIfTI upload stays on disk and is included in `original_media` export
+
+Current scope:
+
+- the Community Edition annotates rendered 2D previews
+- ZIP uploads should contain exactly one DICOM series per archive
+- this is not native 3D volume editing or native DICOM/NIfTI export of annotations
 
 ## SAM2 object masking demo
 
@@ -174,6 +205,10 @@ evaluation, change these values or disable the bootstrap account through:
 - `BOOTSTRAP_DEFAULT_ADMIN_EMAIL`
 - `BOOTSTRAP_DEFAULT_ADMIN_PASSWORD`
 
+Community Edition also defaults to `TEAM_ACTIVE_USER_LIMIT=3`, which caps each
+team to three active users. For a licensed delivery, update that number in
+`.env` to match the purchased seat count.
+
 Legacy aliases remain available:
 
 - `dev -> gpu`
@@ -304,7 +339,6 @@ startup flow.
 See:
 
 - `LICENSE`
-- `LICENSE.BSL-1.1`
 - `COMMERCIAL_LICENSE.md`
 - `THIRD_PARTY_NOTICES.md`
 - `MODEL_LICENSES.md`
@@ -329,7 +363,8 @@ this repository.
 ## Before public release
 
 - confirm the Licensor name and licensing contact email remain current
-- verify that `LICENSE` and `LICENSE.BSL-1.1` are distributed together
+- verify that the root `LICENSE` contains the complete BUSL-1.1 text and the
+  current FramePin license parameters
 - verify third-party notices for the exact dependencies and model assets you
   actually distribute
 - run `python tools/check_public_release.py`

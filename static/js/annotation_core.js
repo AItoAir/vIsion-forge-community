@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: AItoAir, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+// See LICENSE for the project-specific license terms.
+
 // Image/Video annotation canvas with frame-aware bbox and polygon support.
 
 function generateClientUid() {
@@ -29,6 +33,7 @@ function escapeHtml(value) {
 
 const ITEM_FRAME_QUERY_PARAM = "frame";
 const REGION_COMMENT_QUERY_PARAM = "region_comment";
+const ANNOTATION_SAVE_DEBOUNCE_MS = 150;
 
 function parseRequestedFrameIndexFromLocation() {
   if (typeof window === "undefined") return null;
@@ -858,6 +863,10 @@ export class AnnotationCanvas {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.stageEl = canvas.parentElement;
+    this.stageSurfaceEl =
+      this.stageEl?.closest(".annotation-stage-surface") ||
+      this.stageEl?.parentElement ||
+      null;
     this.canvas.style.cursor = "crosshair";
     this.mediaEl = mediaEl;
     this.mediaEl.style.transformOrigin = "top left";
@@ -994,6 +1003,7 @@ export class AnnotationCanvas {
     this.isDirty = false;
     this.isSaving = false;
     this.pendingSaveRequested = false;
+    this.suppressBeforeUnloadPrompt = false;
     this.historyLimit = 30;
     this.historyUndoStack = [];
     this.historyRedoStack = [];
@@ -1006,6 +1016,11 @@ export class AnnotationCanvas {
     this.showAnnotationLabels = this.loadAnnotationLabelVisibilityFromStorage();
 
     this.loadingOverlayEl = document.getElementById("annotation-loading-overlay");
+    this.pendingStateIndicatorEl = document.getElementById(
+      "annotation-pending-state-indicator"
+    );
+    this.prevItemButtonEl = document.getElementById("btn-prev-item");
+    this.nextItemButtonEl = document.getElementById("btn-next-item");
 
     // object/track selection + timeline drag state
     this.activeTrackId = null;
@@ -1025,7 +1040,10 @@ export class AnnotationCanvas {
   }
 
   getResizeMeasurementElement() {
-    if (this.kind === "video" && !this.useCanvasVideo && this.stageEl) {
+    if (this.stageSurfaceEl) {
+      return this.stageSurfaceEl;
+    }
+    if (this.stageEl) {
       return this.stageEl;
     }
     return this.mediaEl;
@@ -1089,6 +1107,7 @@ export class AnnotationCanvas {
 
     this.attachEvents();
     this.updateInterpolationPanel();
+    this.updatePendingAnnotationIndicator();
     this.requestRedraw();
   }
 
@@ -1389,11 +1408,11 @@ export class AnnotationCanvas {
   applyMediaTransform() {
     if (!this.mediaEl) return;
 
-    const zoom = this.zoom || 1;
+    const scale = (this.baseScale || 1) * (this.zoom || 1);
     const translateX = this.translateX || 0;
     const translateY = this.translateY || 0;
     this.mediaEl.style.transformOrigin = "top left";
-    this.mediaEl.style.transform = `matrix(${zoom}, 0, 0, ${zoom}, ${translateX}, ${translateY})`;
+    this.mediaEl.style.transform = `matrix(${scale}, 0, 0, ${scale}, ${translateX}, ${translateY})`;
   }
 
   replaceSavedSparseState(snapshot = this.makeSparseSnapshotMap()) {
@@ -1519,6 +1538,121 @@ export class AnnotationCanvas {
     if (!badge || !statusValue) return;
     badge.textContent = statusValue;
     badge.className = this.getStatusBadgeClass(statusValue);
+  }
+
+  hasPolygonDraftInProgress() {
+    return !!(this.isPolygonDrawing && this.currentDrawingAnnotation);
+  }
+
+  hasPendingAnnotationSave() {
+    return !!(
+      this.isDirty ||
+      this.isSaving ||
+      this.pendingSaveRequested ||
+      this.saveTimer
+    );
+  }
+
+  hasPendingAnnotationWork() {
+    return this.hasPolygonDraftInProgress() || this.hasPendingAnnotationSave();
+  }
+
+  getPendingAnnotationState() {
+    if (this.hasPolygonDraftInProgress()) {
+      return {
+        label: "Polygon draft in progress",
+        className: "badge text-bg-warning",
+        title:
+          "Press Enter to finish this polygon or Escape to discard it before leaving the item.",
+      };
+    }
+
+    if (this.isSaving) {
+      return {
+        label: "Saving changes...",
+        className: "badge text-bg-info",
+        title: "Recent annotation changes are still being saved.",
+      };
+    }
+
+    if (this.hasPendingAnnotationSave()) {
+      return {
+        label: "Unsaved changes",
+        className: "badge text-bg-secondary",
+        title: "Recent annotation changes have not been saved yet.",
+      };
+    }
+
+    return null;
+  }
+
+  updatePendingAnnotationIndicator() {
+    const indicator = this.pendingStateIndicatorEl;
+    if (!indicator) {
+      return;
+    }
+
+    const state = this.getPendingAnnotationState();
+    if (!state) {
+      indicator.hidden = true;
+      indicator.textContent = "";
+      indicator.className = "badge";
+      indicator.removeAttribute("title");
+      return;
+    }
+
+    indicator.hidden = false;
+    indicator.textContent = state.label;
+    indicator.className = state.className;
+    indicator.title = state.title;
+  }
+
+  getPendingNavigationWarning(targetDescription = "leave this item") {
+    if (this.hasPolygonDraftInProgress()) {
+      return (
+        "A polygon is still being drawn and has not been finalized. " +
+        `If you ${targetDescription}, that in-progress polygon will be discarded. Continue?`
+      );
+    }
+
+    if (this.isSaving) {
+      return (
+        "Annotation changes are still being saved. " +
+        `If you ${targetDescription}, the latest edits may be lost. Continue?`
+      );
+    }
+
+    return (
+      "You have unsaved annotation changes. " +
+      `If you ${targetDescription}, the latest edits may be lost. Continue?`
+    );
+  }
+
+  confirmPendingNavigation(targetDescription = "leave this item") {
+    if (!this.hasPendingAnnotationWork()) {
+      return true;
+    }
+
+    const shouldContinue = window.confirm(
+      this.getPendingNavigationWarning(targetDescription)
+    );
+    if (shouldContinue) {
+      this.suppressBeforeUnloadPrompt = true;
+    }
+    return shouldContinue;
+  }
+
+  navigateToItem(targetUrl, targetDescription = "leave this item") {
+    if (!targetUrl) {
+      return;
+    }
+
+    if (!this.confirmPendingNavigation(targetDescription)) {
+      return;
+    }
+
+    this.togglePreviousFrameOverlay(false);
+    window.location.href = targetUrl;
   }
 
   normalizeAnnotationCoords(annotation) {
@@ -4540,8 +4674,15 @@ export class AnnotationCanvas {
       return;
     }
     const rect = measurementTarget.getBoundingClientRect();
-    const viewportWidth = rect.width;
-    const viewportHeight = rect.height;
+    const computedStyle = window.getComputedStyle(measurementTarget);
+    const paddingX =
+      (parseFloat(computedStyle.paddingLeft || "0") || 0) +
+      (parseFloat(computedStyle.paddingRight || "0") || 0);
+    const paddingY =
+      (parseFloat(computedStyle.paddingTop || "0") || 0) +
+      (parseFloat(computedStyle.paddingBottom || "0") || 0);
+    const viewportWidth = Math.max(0, rect.width - paddingX);
+    const viewportHeight = Math.max(0, rect.height - paddingY);
 
     if (!viewportWidth || !viewportHeight) {
       return;
@@ -4663,7 +4804,7 @@ export class AnnotationCanvas {
       return;
     }
 
-    const observedTargets = [this.stageEl, this.mediaEl].filter(
+    const observedTargets = [this.stageSurfaceEl, this.stageEl, this.mediaEl].filter(
       (target, index, allTargets) =>
         !!target && allTargets.indexOf(target) === index
     );
@@ -4680,6 +4821,24 @@ export class AnnotationCanvas {
 
   attachEvents() {
     const handleMouseDown = (e) => this.onMouseDown(e);
+    const handleNavButtonClick = (event, targetUrl, targetDescription) => {
+      if (!targetUrl) {
+        event.preventDefault();
+        return;
+      }
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      event.preventDefault();
+      this.navigateToItem(targetUrl, targetDescription);
+    };
 
     if (this.canvas) {
       this.canvas.addEventListener("mousedown", handleMouseDown);
@@ -4698,8 +4857,21 @@ export class AnnotationCanvas {
     }
     window.addEventListener("mousemove", (e) => this.onMouseMove(e));
     window.addEventListener("mouseup", (e) => this.onMouseUp(e));
+    window.addEventListener("beforeunload", (event) => {
+      if (this.suppressBeforeUnloadPrompt || !this.hasPendingAnnotationWork()) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    });
     window.addEventListener("resize", () => this.schedulePassiveResizeSync());
     this.observePassiveResize();
+    this.prevItemButtonEl?.addEventListener("click", (event) =>
+      handleNavButtonClick(event, this.prevItemUrl, "open the previous item")
+    );
+    this.nextItemButtonEl?.addEventListener("click", (event) =>
+      handleNavButtonClick(event, this.nextItemUrl, "open the next item")
+    );
 
     document.addEventListener("keydown", (e) => {
       if (!this.readOnly && this.isPolygonDrawing) {
@@ -4776,16 +4948,14 @@ export class AnnotationCanvas {
       if (!modifierPressed && !e.altKey && !e.shiftKey && (e.key === "A" || e.key === "a")) {
         if (this.prevItemUrl) {
           e.preventDefault();
-          this.togglePreviousFrameOverlay(false);
-          window.location.href = this.prevItemUrl;
+          this.navigateToItem(this.prevItemUrl, "open the previous item");
         }
         return;
       }
       if (!modifierPressed && !e.altKey && !e.shiftKey && (e.key === "D" || e.key === "d")) {
         if (this.nextItemUrl) {
           e.preventDefault();
-          this.togglePreviousFrameOverlay(false);
-          window.location.href = this.nextItemUrl;
+          this.navigateToItem(this.nextItemUrl, "open the next item");
         }
         return;
       }
@@ -4795,8 +4965,12 @@ export class AnnotationCanvas {
           e.key === "ArrowLeft" ? this.prevItemUrl : this.nextItemUrl;
         if (targetUrl) {
           e.preventDefault();
-          this.togglePreviousFrameOverlay(false);
-          window.location.href = targetUrl;
+          this.navigateToItem(
+            targetUrl,
+            e.key === "ArrowLeft"
+              ? "open the previous item"
+              : "open the next item"
+          );
         }
         return;
       }
@@ -7707,6 +7881,7 @@ export class AnnotationCanvas {
     this.isPolygonDrawing = true;
     this.annotations.push(newAnnotation);
     this.markActiveAnnotation(newAnnotation);
+    this.updatePendingAnnotationIndicator();
   }
 
   updatePolygonDraftPreview(imgPt) {
@@ -7774,6 +7949,7 @@ export class AnnotationCanvas {
 
     if (this.isDegenerateAnnotation(annotation)) {
       this.removeAnnotationWithoutSave(annotation);
+      this.updatePendingAnnotationIndicator();
       this.requestRedraw();
       return false;
     }
@@ -7797,6 +7973,7 @@ export class AnnotationCanvas {
     this.pushHistoryCheckpoint();
     this.updateFastActionButtons();
     this.scheduleSave();
+    this.updatePendingAnnotationIndicator();
     return true;
   }
 
@@ -7807,6 +7984,7 @@ export class AnnotationCanvas {
     this.isPolygonDrawing = false;
     this.currentDrawingAnnotation = null;
     this.removeAnnotationWithoutSave(annotation);
+    this.updatePendingAnnotationIndicator();
     this.requestRedraw();
   }
 
@@ -9176,19 +9354,29 @@ export class AnnotationCanvas {
     }
   }
 
-  scheduleSave() {
+  scheduleSave(delayMs = ANNOTATION_SAVE_DEBOUNCE_MS) {
     if (this.readOnly) return;
 
+    const normalizedDelayMs = Math.max(
+      0,
+      Math.trunc(Number(delayMs) || ANNOTATION_SAVE_DEBOUNCE_MS)
+    );
+    this.suppressBeforeUnloadPrompt = false;
     this.isDirty = true;
+    this.updatePendingAnnotationIndicator();
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
     }
     this.saveTimer = window.setTimeout(() => {
       this.saveTimer = null;
-      if (!this.isDirty) return;
+      if (!this.isDirty) {
+        this.updatePendingAnnotationIndicator();
+        return;
+      }
       this.isDirty = false;
+      this.updatePendingAnnotationIndicator();
       this.saveAnnotations();
-    }, 500);
+    }, normalizedDelayMs);
   }
 
   isInteractionActive() {
@@ -9287,6 +9475,7 @@ export class AnnotationCanvas {
     const patch = this.buildSparsePatch(currentState);
     if (!patch.upserts.length && !patch.deletes.length) {
       this.isDirty = false;
+      this.updatePendingAnnotationIndicator();
       this.refreshCurrentHistoryCheckpoint();
       return;
     }
@@ -9318,6 +9507,7 @@ export class AnnotationCanvas {
 
     const url = `${this.apiBase}/items/${this.itemId}/annotations`;
     this.isSaving = true;
+    this.updatePendingAnnotationIndicator();
     try {
       const response = await fetch(url, {
         method: "PATCH",
@@ -9339,6 +9529,7 @@ export class AnnotationCanvas {
           this.annotationRevision = Number(data.revision);
         }
         this.isDirty = false;
+        this.updatePendingAnnotationIndicator();
         this.updateHistoryButtons();
         alert(
           "A teammate saved newer annotations first. The latest server state was loaded. Please review it and retry your last edit if needed."
@@ -9348,6 +9539,7 @@ export class AnnotationCanvas {
 
       if (!response.ok) {
         this.isDirty = true;
+        this.updatePendingAnnotationIndicator();
         console.error("Failed to save annotations", data);
         alert("Failed to save annotations");
         return;
@@ -9363,6 +9555,7 @@ export class AnnotationCanvas {
         this.refreshCurrentHistoryCheckpoint();
       }
       this.isDirty = false;
+      this.updatePendingAnnotationIndicator();
       this.updateStatusBadge(data.item_status);
       this.persistManualKeyframesToStorage();
       this.updateHistoryButtons();
@@ -9372,10 +9565,12 @@ export class AnnotationCanvas {
       );
     } catch (error) {
       this.isDirty = true;
+      this.updatePendingAnnotationIndicator();
       console.error("Error while saving annotations", error);
       alert("Error while saving annotations");
     } finally {
       this.isSaving = false;
+      this.updatePendingAnnotationIndicator();
       if (this.pendingSaveRequested) {
         this.pendingSaveRequested = false;
         this.scheduleSave();

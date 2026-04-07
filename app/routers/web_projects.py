@@ -1,13 +1,17 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 import random
+import shutil
 from collections import defaultdict
-from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -18,22 +22,34 @@ from ..models import (
     ItemStatus,
     LabelClass,
     LabelGeometryKind,
+    Notification,
     Project,
+    Sam2TrackJob,
     UserRole,
 )
 from ..security import ensure_project_team_access, require_roles
+from ..services.audit import log_audit
 from ..services.media import (
+    annotation_source_relative_path,
     build_annotation_media_state,
     labeling_proxy_storage_summary_payload,
-    resolve_media_source_path,
+    media_storage_path,
+    preferred_item_media_variant,
+    remove_labeling_proxy_video,
+    resolve_annotation_source_path,
     sync_item_media_conversion_state,
 )
+from ..services.uploads import (
+    SUPPORTED_MEDICAL_UPLOAD_EXTENSIONS,
+    SUPPORTED_STANDARD_IMAGE_EXTENSIONS,
+    SUPPORTED_STANDARD_IMAGE_LABEL,
+    UPLOAD_FILE_INPUT_ACCEPT,
+)
+from ..template_utils import create_templates
 
 router = APIRouter(include_in_schema=False)
 
-templates = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent.parent.parent / "templates")
-)
+templates = create_templates()
 
 
 DEFAULT_LABEL_COLORS = [
@@ -52,6 +68,15 @@ DEFAULT_LABEL_COLORS = [
 ]
 
 ITEM_LABEL_SUMMARY_PREVIEW_LIMIT = 3
+PROJECT_DELETE_SAMPLE_LIMIT = 5
+
+PROJECTS_INDEX_NOTICE_MESSAGES = {
+    "project_deleted": "Project was deleted.",
+}
+
+PROJECT_SETTINGS_DELETE_ERROR_MESSAGES = {
+    "name_mismatch": "Type the project name exactly to confirm deletion.",
+}
 
 
 def _pick_default_label_color(label_classes: list[LabelClass]) -> str:
@@ -60,6 +85,115 @@ def _pick_default_label_color(label_classes: list[LabelClass]) -> str:
         color for color in DEFAULT_LABEL_COLORS if color.lower() not in used_colors
     ]
     return random.choice(available_colors or DEFAULT_LABEL_COLORS)
+
+
+def _normalize_project_name(raw_value: str | None) -> str:
+    return (raw_value or "").strip()
+
+
+def _projects_index_redirect_url(
+    request: Request,
+    *,
+    notice: str | None = None,
+) -> str:
+    params: dict[str, str] = {}
+    if notice in PROJECTS_INDEX_NOTICE_MESSAGES:
+        params["notice"] = str(notice)
+
+    base_url = str(request.url_for("projects_index"))
+    if not params:
+        return base_url
+    return f"{base_url}?{urlencode(params)}"
+
+
+def _project_settings_redirect_url(
+    request: Request,
+    project_id: int,
+    *,
+    delete_error: str | None = None,
+) -> str:
+    params: dict[str, str] = {}
+    if delete_error in PROJECT_SETTINGS_DELETE_ERROR_MESSAGES:
+        params["delete_error"] = str(delete_error)
+
+    base_url = str(request.url_for("project_settings", project_id=project_id))
+    if not params:
+        return base_url
+    return f"{base_url}?{urlencode(params)}"
+
+
+def _build_project_delete_summary(
+    db: Session,
+    *,
+    project_id: int,
+    label_class_count: int,
+) -> dict[str, object]:
+    total_item_count = int(
+        db.execute(select(func.count(Item.id)).where(Item.project_id == project_id))
+        .scalar_one()
+        or 0
+    )
+    total_annotation_count = int(
+        db.execute(
+            select(func.count(Annotation.id))
+            .join(Item, Item.id == Annotation.item_id)
+            .where(Item.project_id == project_id)
+        )
+        .scalar_one()
+        or 0
+    )
+    sample_items = (
+        db.execute(
+            select(Item)
+            .where(Item.project_id == project_id)
+            .order_by(Item.id.asc())
+            .limit(PROJECT_DELETE_SAMPLE_LIMIT)
+        )
+        .scalars()
+        .all()
+    )
+
+    return {
+        "item_count": total_item_count,
+        "annotation_count": total_annotation_count,
+        "label_class_count": label_class_count,
+        "sample_items": sample_items,
+        "sample_limit": PROJECT_DELETE_SAMPLE_LIMIT,
+        "remaining_item_count": max(0, total_item_count - len(sample_items)),
+    }
+
+
+def _delete_project_related_records(db: Session, project: Project) -> None:
+    items = (
+        db.execute(select(Item).where(Item.project_id == project.id).order_by(Item.id.asc()))
+        .scalars()
+        .all()
+    )
+    item_ids = [item.id for item in items]
+
+    if item_ids:
+        sam2_job_ids = list(
+            db.execute(select(Sam2TrackJob.id).where(Sam2TrackJob.item_id.in_(item_ids)))
+            .scalars()
+            .all()
+        )
+        if sam2_job_ids:
+            db.execute(
+                delete(Notification).where(
+                    Notification.sam2_track_job_id.in_(sam2_job_ids)
+                )
+            )
+
+        db.execute(delete(Notification).where(Notification.item_id.in_(item_ids)))
+        db.execute(delete(Sam2TrackJob).where(Sam2TrackJob.item_id.in_(item_ids)))
+
+    db.execute(delete(Notification).where(Notification.project_id == project.id))
+
+    for item in items:
+        remove_labeling_proxy_video(item)
+        db.delete(item)
+
+    db.delete(project)
 
 
 def _parse_optional_positive_int(raw_value: str | None) -> int | None:
@@ -356,24 +490,24 @@ def _build_project_items_context(
                 db.add(item)
                 items_changed = True
             media_state = build_annotation_media_state(item)
-            source_available = resolve_media_source_path(item) is not None
+            source_available = resolve_annotation_source_path(item) is not None
             preview_available = media_state.ready or source_available
             item_preview_state[item.id] = {
                 "available": preview_available,
-                "variant": "display" if media_state.ready else "original",
+                "variant": "display",
                 "missing_reason": (
                     (item.media_conversion_error or "").strip()
-                    or f"Video source was not found: {item.path}"
+                    or f"Video source was not found: {annotation_source_relative_path(item)}"
                 ),
             }
             continue
 
-        source_available = resolve_media_source_path(item) is not None
+        source_available = resolve_annotation_source_path(item) is not None
         item_preview_state[item.id] = {
             "available": source_available,
-            "variant": "original",
+            "variant": preferred_item_media_variant(item),
             "missing_reason": (
-                None if source_available else f"Image source was not found: {item.path}"
+                None if source_available else f"Image source was not found: {annotation_source_relative_path(item)}"
             ),
         }
 
@@ -396,6 +530,10 @@ def _build_project_items_context(
         "status_filter": status,
         "storage_budget": labeling_proxy_storage_summary_payload(),
         "current_user": current_user,
+        "upload_file_accept": UPLOAD_FILE_INPUT_ACCEPT,
+        "supported_standard_image_extensions": list(SUPPORTED_STANDARD_IMAGE_EXTENSIONS),
+        "supported_standard_image_label": SUPPORTED_STANDARD_IMAGE_LABEL,
+        "supported_medical_upload_extensions": list(SUPPORTED_MEDICAL_UPLOAD_EXTENSIONS),
         "project_label_classes": project_label_classes,
         "selected_label_class": selected_label_class,
         "filtered_item_count": filtered_item_count,
@@ -413,6 +551,7 @@ def _build_project_items_context(
 @router.get("/", response_class=HTMLResponse, name="projects_index")
 def projects_index(
     request: Request,
+    notice: str | None = None,
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(UserRole.annotator, UserRole.reviewer, UserRole.project_admin)),
 ):
@@ -427,6 +566,7 @@ def projects_index(
         context={
             "request": request,
             "projects": projects,
+            "projects_notice": PROJECTS_INDEX_NOTICE_MESSAGES.get(notice),
             "current_user": current_user,
         },
     )
@@ -440,6 +580,7 @@ def projects_index(
 def project_settings(
     request: Request,
     project_id: int,
+    delete_error: str | None = None,
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(UserRole.project_admin)),
 ):
@@ -458,6 +599,11 @@ def project_settings(
         .scalars()
         .all()
     )
+    delete_summary = _build_project_delete_summary(
+        db,
+        project_id=project_id,
+        label_class_count=len(label_classes),
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -467,6 +613,11 @@ def project_settings(
             "project": project,
             "label_classes": label_classes,
             "new_label_color": _pick_default_label_color(label_classes),
+            "project_delete_summary": delete_summary,
+            "project_delete_error": PROJECT_SETTINGS_DELETE_ERROR_MESSAGES.get(
+                delete_error
+            ),
+            "project_delete_expected_name": _normalize_project_name(project.name),
             "current_user": current_user,
         },
     )
@@ -639,9 +790,13 @@ def create_project(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(UserRole.project_admin)),
 ):
+    clean_name = _normalize_project_name(name)
+    if not clean_name:
+        return HTMLResponse(status_code=400, content="Project name is required")
+
     project = Project(
-        name=name,
-        description=description,
+        name=clean_name,
+        description=(description or "").strip() or None,
         owner_user_id=current_user.id,
         is_archived=False,
     )
@@ -651,6 +806,70 @@ def create_project(
 
     return RedirectResponse(
         url=request.url_for("project_items", project_id=project.id),
+        status_code=303,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/delete",
+    response_class=HTMLResponse,
+    name="delete_project",
+)
+def delete_project(
+    request: Request,
+    project_id: int,
+    confirmation_name: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(UserRole.project_admin)),
+):
+    project = db.get(Project, project_id)
+    if not project:
+        return HTMLResponse(status_code=404, content="Project not found")
+
+    ensure_project_team_access(project, current_user)
+
+    expected_name = _normalize_project_name(project.name)
+    if _normalize_project_name(confirmation_name) != expected_name:
+        return RedirectResponse(
+            url=_project_settings_redirect_url(
+                request,
+                project_id,
+                delete_error="name_mismatch",
+            ),
+            status_code=303,
+        )
+
+    delete_summary = _build_project_delete_summary(
+        db,
+        project_id=project.id,
+        label_class_count=len(project.label_classes),
+    )
+    project_name = project.name
+    project_upload_dir = media_storage_path(f"uploads/project_{project.id}")
+
+    log_audit(
+        db,
+        actor_id=current_user.id,
+        object_type="project",
+        object_id=project.id,
+        action="project_deleted",
+        payload={
+            "name": project_name,
+            "item_count": delete_summary["item_count"],
+            "annotation_count": delete_summary["annotation_count"],
+            "label_class_count": delete_summary["label_class_count"],
+        },
+    )
+    _delete_project_related_records(db, project)
+    db.flush()
+
+    if project_upload_dir.exists() and project_upload_dir.is_dir():
+        shutil.rmtree(project_upload_dir, ignore_errors=True)
+
+    db.commit()
+
+    return RedirectResponse(
+        url=_projects_index_redirect_url(request, notice="project_deleted"),
         status_code=303,
     )
 

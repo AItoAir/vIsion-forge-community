@@ -1,10 +1,14 @@
+// SPDX-FileCopyrightText: AItoAir, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+// See LICENSE for the project-specific license terms.
+
 // static/js/annotation_canvas.js
 // Thin entrypoint: wire DOM to core AnnotationCanvas logic.
 
-import { AnnotationCanvas, lfDebug } from "./annotation_core.js?v=20260330_collaboration_presence_frame_fix";
+import { AnnotationCanvas, lfDebug } from "./annotation_core.js?v=20260407_navigation_guard";
 import { enhanceAnnotationCanvasWithComments } from "./annotation_comments.js?v=20260330_comment_mentions";
 import { enhanceAnnotationCanvasWithSam2 } from "./annotation_sam2.js?v=20260326_annotation_audit";
-import { enhanceAnnotationCanvasWithCollaboration } from "./annotation_collaboration.js?v=20260330_collaboration_presence_frame_fix";
+import { enhanceAnnotationCanvasWithCollaboration } from "./annotation_collaboration.js?v=20260407_collaboration_panel_quiet";
 
 function parseJsonScript(scriptId) {
   const el = document.getElementById(scriptId);

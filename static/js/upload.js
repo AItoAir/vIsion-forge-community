@@ -1,9 +1,28 @@
+// SPDX-FileCopyrightText: AItoAir, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+// See LICENSE for the project-specific license terms.
+
 // static/js/upload.js
 // Multi-file drag & drop uploader for project items.
 
 function bootMultiFileUpload() {
   const cfg = window.FRAME_PIN_UPLOAD_CONFIG || {};
   const uploadUrl = cfg.uploadUrl;
+  const supportedStandardImageExtensions = Array.isArray(
+    cfg.supportedStandardImageExtensions,
+  ) && cfg.supportedStandardImageExtensions.length
+    ? cfg.supportedStandardImageExtensions
+    : [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
+  const supportedMedicalUploadExtensions = Array.isArray(
+    cfg.supportedMedicalUploadExtensions,
+  ) && cfg.supportedMedicalUploadExtensions.length
+    ? cfg.supportedMedicalUploadExtensions
+    : [".dcm", ".dicom", ".zip", ".nii", ".nii.gz"];
+  const supportedStandardImageLabel =
+    typeof cfg.supportedStandardImageLabel === "string" &&
+    cfg.supportedStandardImageLabel.trim()
+      ? cfg.supportedStandardImageLabel.trim()
+      : "JPEG, PNG, GIF, WebP, and BMP";
   if (!uploadUrl) {
     return;
   }
@@ -21,9 +40,58 @@ function bootMultiFileUpload() {
     return;
   }
   dropzone.dataset.uploadBooted = "true";
+  const openFilePicker = () => {
+    fileInput.click();
+  };
 
   let pendingCount = 0;
   let pendingVideoConversion = false;
+  const supportedStandardImageMimeTypes = new Set([
+    "image/jpeg",
+    "image/pjpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+    "image/x-ms-bmp",
+  ]);
+  const knownUnsupportedImageExtensions = [
+    ".heic",
+    ".heif",
+    ".tif",
+    ".tiff",
+    ".avif",
+    ".svg",
+  ];
+
+  function normalizeMimeType(value) {
+    return (value || "").split(";", 1)[0].trim().toLowerCase();
+  }
+
+  function hasAllowedExtension(fileName, allowedExtensions) {
+    const normalized = (fileName || "").toLowerCase();
+    return allowedExtensions.some((extension) => normalized.endsWith(extension));
+  }
+
+  function hasSupportedMedicalExtension(fileName) {
+    return hasAllowedExtension(fileName, supportedMedicalUploadExtensions);
+  }
+
+  function isSupportedStandardImageUpload(file) {
+    const mimeType = normalizeMimeType(file.type);
+    if (mimeType.startsWith("image/")) {
+      return supportedStandardImageMimeTypes.has(mimeType);
+    }
+    return hasAllowedExtension(file.name, supportedStandardImageExtensions);
+  }
+
+  function looksLikeUnsupportedImageUpload(file) {
+    const mimeType = normalizeMimeType(file.type);
+    return (
+      mimeType.startsWith("image/") ||
+      hasAllowedExtension(file.name, knownUnsupportedImageExtensions)
+    );
+  }
 
   function createStatusItem(fileName, initialMessage, kind) {
     const row = document.createElement("div");
@@ -140,13 +208,23 @@ function bootMultiFileUpload() {
 
     const accepted = [];
     for (const file of fileList) {
-      const type = file.type || "";
-      if (type.startsWith("image/") || type.startsWith("video/")) {
+      const type = normalizeMimeType(file.type);
+      if (
+        type.startsWith("video/") ||
+        hasSupportedMedicalExtension(file.name) ||
+        isSupportedStandardImageUpload(file)
+      ) {
         accepted.push(file);
+      } else if (looksLikeUnsupportedImageUpload(file)) {
+        createStatusItem(
+          file.name,
+          ` - Unsupported image format. Standard image uploads must be ${supportedStandardImageLabel}.`,
+          "error",
+        );
       } else {
         createStatusItem(
           file.name,
-          " - Unsupported file type (only image/video allowed).",
+          " - Unsupported file type (image, video, DICOM, DICOM ZIP, or NIfTI only).",
           "error",
         );
       }
@@ -179,7 +257,14 @@ function bootMultiFileUpload() {
   });
 
   dropzone.addEventListener("click", () => {
-    fileInput.click();
+    openFilePicker();
+  });
+
+  dropzone.addEventListener("keydown", (evt) => {
+    if (evt.key === "Enter" || evt.key === " ") {
+      evt.preventDefault();
+      openFilePicker();
+    }
   });
 
   fileInput.addEventListener("change", () => {

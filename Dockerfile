@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -27,7 +31,7 @@ RUN if [ ! -f "${LF_DOCKER_REQUIREMENTS_FILE}" ]; then \
       pip install --no-cache-dir -r "${LF_DOCKER_REQUIREMENTS_FILE}"; \
     fi
 
-COPY LICENSE LICENSE.BSL-1.1 COMMERCIAL_LICENSE.md THIRD_PARTY_NOTICES.md MODEL_LICENSES.md README.md .env.example /app/
+COPY LICENSE COMMERCIAL_LICENSE.md THIRD_PARTY_NOTICES.md MODEL_LICENSES.md README.md .env.example /app/
 COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 COPY app /app/app

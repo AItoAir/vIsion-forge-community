@@ -1,6 +1,9 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
-import hashlib
 import json
 import secrets
 from pathlib import Path
@@ -9,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, model_validator
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
@@ -66,17 +69,18 @@ from ..services.comment_mentions import (
 )
 from ..services.export_jobs import process_export_job
 from ..services.media import (
-    MediaProbeError,
+    ensure_browser_compatible_image_preview,
     enqueue_media_conversion,
+    guess_media_type,
     labeling_proxy_profile_token,
     media_conversion_payload,
     media_storage_path,
-    probe_media_metadata,
     remove_labeling_proxy_video,
     resolve_annotation_media_path,
     resolve_media_source_path,
 )
 from ..services.notifications import create_comment_mention_notifications
+from ..services.uploads import UploadPreparationError, prepare_uploaded_media
 from ..services.webhooks import SUPPORTED_WEBHOOK_EVENTS, dispatch_webhook_event
 
 
@@ -279,14 +283,6 @@ def _resolve_prediction_item(db: Session, *, project_id: int, reference) -> Item
     return item
 
 
-def _normalize_item_kind(kind: str | None, file: UploadFile) -> ItemKind:
-    normalized = (kind or "").strip().lower()
-    if normalized in {ItemKind.image.value, ItemKind.video.value}:
-        return ItemKind(normalized)
-    content_type = file.content_type or ""
-    return ItemKind.video if content_type.startswith("video/") else ItemKind.image
-
-
 def _create_uploaded_item(
     *,
     db: Session,
@@ -295,59 +291,32 @@ def _create_uploaded_item(
     current_user,
     kind: str | None = None,
 ) -> Item:
-    item_kind = _normalize_item_kind(kind, file)
     static_dir = Path(__file__).resolve().parent.parent.parent / "static"
-    uploads_root = static_dir / "uploads"
-    project_dir = uploads_root / f"project_{project.id}"
-    project_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = Path(file.filename or "uploaded").name
-    target_path = project_dir / filename
-    hasher = hashlib.sha256()
     try:
-        with target_path.open("xb") as output:
-            while True:
-                chunk = file.file.read(8192)
-                if not chunk:
-                    break
-                hasher.update(chunk)
-                output.write(chunk)
-    except FileExistsError as exc:
-        raise HTTPException(status_code=400, detail=f"File already exists in this project: {filename}") from exc
-    finally:
-        file.file.close()
-
-    try:
-        metadata = probe_media_metadata(target_path, item_kind)
-    except MediaProbeError as exc:
-        if target_path.exists():
-            target_path.unlink()
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    if item_kind == ItemKind.video and metadata.frame_rate_mode == "vfr":
-        if target_path.exists():
-            target_path.unlink()
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Variable frame rate videos are not supported for frame-accurate labeling yet. "
-                "Please convert this video to constant frame rate (CFR) before uploading."
-            ),
+        prepared = prepare_uploaded_media(
+            file=file,
+            project_id=project.id,
+            static_dir=static_dir,
+            requested_kind=kind,
         )
+    except UploadPreparationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     item = Item(
         project_id=project.id,
-        kind=item_kind,
-        path=str(target_path.relative_to(static_dir)).replace("\\", "/"),
-        sha256=hasher.hexdigest(),
-        w=metadata.width,
-        h=metadata.height,
-        duration_sec=metadata.duration_sec,
-        fps=metadata.fps,
-        media_conversion_status="pending" if item_kind == ItemKind.video else "not_required",
+        kind=prepared.kind,
+        path=prepared.path,
+        display_path=prepared.display_path,
+        source_media_type=prepared.source_media_type,
+        sha256=prepared.sha256,
+        w=prepared.metadata.width,
+        h=prepared.metadata.height,
+        duration_sec=prepared.metadata.duration_sec,
+        fps=prepared.metadata.fps,
+        media_conversion_status="pending" if prepared.kind == ItemKind.video else "not_required",
         media_conversion_error=None,
-        media_conversion_profile=labeling_proxy_profile_token() if item_kind == ItemKind.video else None,
-        frame_rate_mode=metadata.frame_rate_mode if item_kind == ItemKind.video else None,
+        media_conversion_profile=labeling_proxy_profile_token() if prepared.kind == ItemKind.video else None,
+        frame_rate_mode=prepared.metadata.frame_rate_mode if prepared.kind == ItemKind.video else None,
         status=ItemStatus.unlabeled,
     )
     db.add(item)
@@ -360,6 +329,8 @@ def _create_uploaded_item(
         action="item_uploaded_via_public_api",
         payload={
             "path": item.path,
+            "display_path": item.display_path,
+            "source_media_type": item.source_media_type,
             "kind": item.kind.value,
             "width": item.w,
             "height": item.h,
@@ -657,6 +628,8 @@ def create_item(
             "item_id": item.id,
             "kind": item.kind.value,
             "path": item.path,
+            "display_path": item.display_path,
+            "source_media_type": item.source_media_type,
             "sha256": item.sha256,
         },
     )
@@ -690,14 +663,25 @@ def delete_item(
 ):
     item = _get_item_or_404(db, item_id, current_user)
     static_dir = Path(__file__).resolve().parent.parent.parent / "static"
-    file_path = static_dir / item.path
-    other_item_exists = db.execute(
-        select(Item.id).where(Item.path == item.path, Item.id != item.id).limit(1)
-    ).scalar_one_or_none()
-    if other_item_exists is None and file_path.is_file():
-        file_path.unlink(missing_ok=True)
-    if other_item_exists is None:
-        remove_labeling_proxy_video(item)
+    relative_paths = [item.path]
+    if item.display_path and item.display_path != item.path:
+        relative_paths.append(item.display_path)
+    for relative_path in relative_paths:
+        file_path = static_dir / relative_path
+        other_item_exists = db.execute(
+            select(Item.id)
+            .where(
+                or_(
+                    Item.path == relative_path,
+                    Item.display_path == relative_path,
+                ),
+                Item.id != item.id,
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        if other_item_exists is None and file_path.is_file():
+            file_path.unlink(missing_ok=True)
+    remove_labeling_proxy_video(item)
     project_id = item.project_id
     db.execute(delete(Prediction).where(Prediction.item_id == item.id))
     db.execute(delete(Annotation).where(Annotation.item_id == item.id))
@@ -733,11 +717,37 @@ def get_item_media(
 ):
     item = _get_item_or_404(db, item_id, current_user)
     requested_variant = (variant or "").strip().lower()
-    if item.kind == ItemKind.video and requested_variant == "display":
+    if requested_variant == "display":
         relative_path = resolve_annotation_media_path(item)
     else:
         relative_path = item.path
     file_path = media_storage_path(relative_path)
+    if (
+        requested_variant == "display"
+        and item.kind == ItemKind.image
+        and not file_path.is_file()
+        and ensure_browser_compatible_image_preview(item)
+    ):
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        relative_path = resolve_annotation_media_path(item)
+        file_path = media_storage_path(relative_path)
+    if (
+        requested_variant == "display"
+        and item.kind == ItemKind.image
+        and not file_path.is_file()
+        and item.source_media_type is None
+    ):
+        recovered_source_path = resolve_media_source_path(item)
+        if recovered_source_path is not None:
+            if item.display_path and item.display_path != item.path:
+                item.display_path = None
+                db.add(item)
+                db.commit()
+                db.refresh(item)
+            relative_path = item.path
+            file_path = recovered_source_path
     if not file_path.is_file() and relative_path == item.path:
         recovered_source_path = resolve_media_source_path(item)
         if recovered_source_path is not None:
@@ -747,7 +757,7 @@ def get_item_media(
             status_code=404,
             detail=f"Item media not found on disk: {item.path}",
         )
-    return FileResponse(path=file_path)
+    return FileResponse(path=file_path, media_type=guess_media_type(file_path))
 
 
 @router.get("/items/{item_id}/annotations", response_model=list[AnnotationRead])

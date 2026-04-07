@@ -1,4 +1,8 @@
 @echo off
+REM SPDX-FileCopyrightText: AItoAir, Inc.
+REM SPDX-License-Identifier: BUSL-1.1
+REM See LICENSE for the project-specific license terms.
+
 setlocal EnableExtensions EnableDelayedExpansion
 
 set "SCRIPT_DIR=%~dp0"

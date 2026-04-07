@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: AItoAir, Inc.
+SPDX-License-Identifier: BUSL-1.1
+See LICENSE for the project-specific license terms.
+-->
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -14,6 +20,12 @@
     New project
   </button>
 </div>
+
+{% if projects_notice %}
+<div class="alert alert-success" role="alert">
+  {{ projects_notice }}
+</div>
+{% endif %}
 
 <div class="collapse mb-3" id="new-project-form">
   <div class="card card-body bg-dark border-secondary">

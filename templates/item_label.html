@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: AItoAir, Inc.
+SPDX-License-Identifier: BUSL-1.1
+See LICENSE for the project-specific license terms.
+-->
+
 {% extends "base.html" %}
 
 {% block extra_head %}
@@ -24,14 +30,6 @@
 {% block main_class %}container-fluid py-3 annotation-page-main{% endblock %}
 
 {% block content %}
-{% set status_class = "text-bg-secondary" %}
-{% if item.status.value == "in_progress" %}
-  {% set status_class = "text-bg-primary" %}
-{% elif item.status.value == "needs_review" %}
-  {% set status_class = "text-bg-warning" %}
-{% elif item.status.value == "done" %}
-  {% set status_class = "text-bg-success" %}
-{% endif %}
 <div class="annotation-page-shell">
   <div class="annotation-page-header">
     <div>
@@ -61,13 +59,11 @@
           Duration <strong>{{ '%.2f'|format(item.duration_sec) }}s</strong>
         </span>
         {% endif %}
-        <span class="annotation-meta-pill">
-          Status <strong id="item-status-badge" class="{{ status_class }}">{{ item.status.value }}</strong>
-        </span>
       </div>
 
       <div class="btn-group btn-group-sm" role="group" aria-label="Item navigation">
         <a
+          id="btn-prev-item"
           class="btn btn-outline-light {% if not prev_item_id %}disabled{% endif %}"
           href="{% if prev_item_id %}{{ url_for('label_item', item_id=prev_item_id) }}{% else %}#{% endif %}"
           hx-boost="false"
@@ -75,6 +71,7 @@
           >← Prev item</a
         >
         <a
+          id="btn-next-item"
           class="btn btn-outline-light {% if not next_item_id %}disabled{% endif %}"
           href="{% if next_item_id %}{{ url_for('label_item', item_id=next_item_id) }}{% else %}#{% endif %}"
           hx-boost="false"
@@ -343,13 +340,13 @@
               id="item-image"
               src="{{ display_media_url }}"
               alt="item image"
-              class="img-fluid"
+              class="annotation-stage-media"
             />
             <canvas id="annotation-canvas"></canvas>
             <div id="region-comment-tooltip" class="region-comment-tooltip" hidden></div>
           </div>
           {% else %}
-          <div class="annotation-container">
+          <div class="annotation-container annotation-video-container">
             <div id="annotation-loading-overlay" class="annotation-loading-overlay">
               <div class="spinner-border spinner-border-sm" role="status">
                 <span class="visually-hidden">Loading...</span>
@@ -358,7 +355,7 @@
             <video
               id="item-video"
               src="{{ display_media_url }}"
-              class="w-100"
+              class="annotation-stage-media"
               playsinline
               preload="auto"
             ></video>
@@ -408,17 +405,13 @@
             <div>
               <div class="annotation-tool-title">Live teammates</div>
               <div class="small text-secondary">
-                See who is on this item, their frame, cursor, and current labeling motion.
+                See who else is on this item and use Follow when you want to sync with them.
               </div>
             </div>
             <div class="d-flex flex-wrap gap-2">
               <span class="badge text-bg-info">Live <span id="collaboration-live-count">0</span></span>
             </div>
           </div>
-          <div id="collaboration-status" class="annotation-tool-hint">
-            Connecting collaboration channel...
-          </div>
-          <div id="collaboration-follow-status" class="annotation-tool-hint d-none"></div>
           <div id="collaboration-participant-list" class="collaboration-participant-list">
             <div class="collaboration-empty">No other teammates are currently on this item.</div>
           </div>
@@ -879,10 +872,10 @@
 
 {% block extra_js %}
 {% if item.kind.value != "video" or media_conversion.ready %}
-<script type="module" src="{{ url_for('static', path='js/annotation_canvas.js') }}?v=20260330_collaboration_presence_frame_fix"></script>
+<script type="module" src="{{ static_asset_url(request, 'js/annotation_canvas.js') }}"></script>
 {% endif %}
 {% if item.kind.value == "video" %}
-<script type="module" src="{{ url_for('static', path='js/media_conversion_status.js') }}?v=20260328_media_conversion_status"></script>
+<script type="module" src="{{ static_asset_url(request, 'js/media_conversion_status.js') }}"></script>
 {% endif %}
 <script>
   const framePinConfig = {

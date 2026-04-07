@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: AItoAir, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+// See LICENSE for the project-specific license terms.
+
 function clonePolygonPoints(points) {
   if (!Array.isArray(points)) return null;
   const normalized = points
@@ -5,15 +9,6 @@ function clonePolygonPoints(points) {
     .map((point) => [Number(point[0]), Number(point[1])])
     .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
   return normalized.length ? normalized : null;
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function buildWebSocketUrl(path) {
@@ -382,12 +377,6 @@ function renderTimelineParticipants(canvas) {
   });
 }
 
-function setStatusText(canvas, text) {
-  const state = getCollaborationState(canvas);
-  if (!state?.statusEl) return;
-  state.statusEl.textContent = text;
-}
-
 function renderParticipantList(canvas) {
   const state = getCollaborationState(canvas);
   if (!state?.listEl) return;
@@ -464,21 +453,6 @@ function renderParticipantList(canvas) {
 
       state.listEl.appendChild(row);
     });
-  }
-
-  if (state.followStatusEl) {
-    const followed = state.followParticipantId
-      ? state.participants.get(state.followParticipantId) || null
-      : null;
-    if (followed) {
-      state.followStatusEl.classList.remove("d-none");
-      state.followStatusEl.innerHTML = `Following <strong>${escapeHtml(
-        getDisplayName(followed)
-      )}</strong>. Click the badge again or interact locally to stop.`;
-    } else {
-      state.followStatusEl.classList.add("d-none");
-      state.followStatusEl.textContent = "";
-    }
   }
 
   renderTimelineParticipants(canvas);
@@ -770,7 +744,6 @@ function applyPendingRemoteCommit(canvas) {
   if (payload.item_status && typeof canvas.updateStatusBadge === "function") {
     canvas.updateStatusBadge(payload.item_status);
   }
-  setStatusText(canvas, "Synced latest teammate annotations.");
 }
 
 function handleRemoteCommit(canvas, payload) {
@@ -782,10 +755,6 @@ function handleRemoteCommit(canvas, payload) {
     const state = getCollaborationState(canvas);
     if (!state) return;
     state.pendingRemoteCommit = payload;
-    setStatusText(
-      canvas,
-      "A teammate saved new annotations. Sync will apply when your current edit settles."
-    );
     return;
   }
 
@@ -795,7 +764,6 @@ function handleRemoteCommit(canvas, payload) {
   if (payload.item_status && typeof canvas.updateStatusBadge === "function") {
     canvas.updateStatusBadge(payload.item_status);
   }
-  setStatusText(canvas, "Synced latest teammate annotations.");
 }
 
 function handleSocketMessage(canvas, event) {
@@ -820,7 +788,6 @@ function handleSocketMessage(canvas, event) {
               .map((participant) => [participant.participant_id, participant])
           : []
       );
-      setStatusText(canvas, "Live teammate channel connected.");
       renderParticipantList(canvas);
       sendPresenceUpdate(canvas, { force: true });
       break;
@@ -878,14 +845,12 @@ function openCollaborationSocket(canvas) {
   if (state.ws && state.ws.readyState <= WebSocket.OPEN) return;
 
   state.closedByClient = false;
-  setStatusText(canvas, "Connecting collaboration channel...");
 
   const ws = new WebSocket(state.wsUrl);
   state.ws = ws;
 
   ws.addEventListener("open", () => {
     state.reconnectAttempt = 1;
-    setStatusText(canvas, "Collaboration channel connected.");
   });
 
   ws.addEventListener("message", (event) => {
@@ -897,13 +862,8 @@ function openCollaborationSocket(canvas) {
       state.ws = null;
     }
     if (!state.closedByClient) {
-      setStatusText(canvas, "Collaboration channel disconnected. Reconnecting...");
       scheduleReconnect(canvas);
     }
-  });
-
-  ws.addEventListener("error", () => {
-    setStatusText(canvas, "Collaboration channel error. Reconnecting...");
   });
 }
 
@@ -912,8 +872,6 @@ function bindUi(canvas) {
   if (!state || state.bound) return;
 
   state.listEl = document.getElementById("collaboration-participant-list");
-  state.statusEl = document.getElementById("collaboration-status");
-  state.followStatusEl = document.getElementById("collaboration-follow-status");
   state.liveCountEl = document.getElementById("collaboration-live-count");
   state.timelineLayerEl = document.getElementById("video-timeline-collaboration-layer");
 
@@ -964,8 +922,6 @@ export function enhanceAnnotationCanvasWithCollaboration(canvas, config = {}) {
     closedByClient: false,
     bound: false,
     listEl: null,
-    statusEl: null,
-    followStatusEl: null,
     liveCountEl: null,
     timelineLayerEl: null,
   };

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 
 set -Eeuo pipefail
 
@@ -112,6 +116,63 @@ raise SystemExit(0 if ok else 1)
 PY
 }
 
+list_verification_images() {
+  local exclude_project_name="${1:-}"
+  local temporary_prefixes=(
+    "frame-pin-verify-"
+    "frame-pin-review-comments-"
+  )
+  local repository tag prefix matches_prefix
+
+  docker image ls --format '{{.Repository}}|{{.Tag}}' | while IFS='|' read -r repository tag; do
+    [[ -n "${repository}" ]] || continue
+    matches_prefix=0
+    for prefix in "${temporary_prefixes[@]}"; do
+      if [[ "${repository}" == "${prefix}"* ]]; then
+        matches_prefix=1
+        break
+      fi
+    done
+    (( matches_prefix == 1 )) || continue
+    if [[ -n "${exclude_project_name}" && "${repository}" == "${exclude_project_name}-"* ]]; then
+      continue
+    fi
+
+    if [[ "${tag}" == "<none>" ]]; then
+      printf '%s\n' "${repository}"
+    else
+      printf '%s:%s\n' "${repository}" "${tag}"
+    fi
+  done
+}
+
+remove_verification_images() {
+  local exclude_project_name="${1:-}"
+  local references=()
+  local reference
+
+  while IFS= read -r reference; do
+    [[ -n "${reference}" ]] || continue
+    references+=("${reference}")
+  done < <(list_verification_images "${exclude_project_name}" | sort -u)
+
+  if (( ${#references[@]} == 0 )); then
+    echo "[INFO] No verification-only Docker images to remove."
+    return 0
+  fi
+
+  for reference in "${references[@]}"; do
+    echo "[INFO] Removing temporary Docker image: ${reference}"
+    if ! docker image rm "${reference}" >/dev/null 2>&1; then
+      echo "[WARN] Failed to remove temporary Docker image '${reference}'; it may still be in use."
+    fi
+  done
+
+  if ! docker image prune -f >/dev/null 2>&1; then
+    echo "[WARN] Failed to prune dangling Docker images after temporary image cleanup."
+  fi
+}
+
 cleanup() {
   local cleanup_exit_code=$?
 
@@ -120,6 +181,12 @@ cleanup() {
     run_manage down || true
   else
     echo "[INFO] Leaving the stack running because LF_VERIFY_KEEP_RUNNING is enabled."
+  fi
+
+  if is_truthy "${KEEP_RUNNING}"; then
+    remove_verification_images "${VERIFICATION_PROJECT_NAME}"
+  else
+    remove_verification_images
   fi
 
   rm -f "${VERIFICATION_ENV_FILE}"

@@ -1,4 +1,10 @@
 <!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: AItoAir, Inc.
+SPDX-License-Identifier: BUSL-1.1
+See LICENSE for the project-specific license terms.
+-->
+
 <html lang="en" data-bs-theme="dark">
   <head>
     <meta charset="utf-8" />
@@ -15,10 +21,10 @@
     />
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 
-    <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}?v=20260330_comment_mentions" />
+    <link rel="stylesheet" href="{{ static_asset_url(request, 'css/app.css') }}" />
     {% block extra_head %}{% endblock %}
   </head>
-  <body hx-boost="true">
+  <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom">
       <div class="container-fluid">
         <a class="navbar-brand fw-bold" href="{{ url_for('projects_index') }}">
@@ -89,8 +95,8 @@
     <script
       src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
     ></script>
-    <script src="{{ url_for('static', path='js/bootstrap_fallback.js') }}"></script>
-    <script src="{{ url_for('static', path='js/notification_center.js') }}?v=20260330_notifications"></script>
+    <script src="{{ static_asset_url(request, 'js/bootstrap_fallback.js') }}"></script>
+    <script src="{{ static_asset_url(request, 'js/notification_center.js') }}"></script>
     <script>
       window.FRAME_PIN_SECURITY = {
         csrfToken: {{ request.state.csrf_token | tojson }},

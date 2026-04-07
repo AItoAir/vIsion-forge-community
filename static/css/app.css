@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: AItoAir, Inc.
+ * SPDX-License-Identifier: BUSL-1.1
+ * See LICENSE for the project-specific license terms.
+ */
+
 body {
   background-color: #0d1117;
 }
@@ -162,16 +168,141 @@ body {
 
 .upload-dropzone {
   border: 1px dashed rgba(255, 255, 255, 0.4);
-  border-radius: 0.5rem;
-  padding: 0.75rem 1rem;
-  background-color: rgba(255, 255, 255, 0.02);
+  border-radius: 0.875rem;
+  padding: 1rem 1.1rem;
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(13, 110, 253, 0.18),
+      transparent 34%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
   cursor: pointer;
-  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
+  transition:
+    background-color 0.15s ease-out,
+    border-color 0.15s ease-out,
+    box-shadow 0.15s ease-out,
+    transform 0.15s ease-out;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone:focus-visible {
+  border-color: rgba(125, 211, 252, 0.9);
+  box-shadow:
+    0 0 0 1px rgba(125, 211, 252, 0.18),
+    0 14px 32px rgba(0, 0, 0, 0.18);
+  outline: none;
 }
 
 .upload-dropzone.dragover {
-  border-color: #0d6efd;
-  background-color: rgba(13, 110, 253, 0.12);
+  border-color: #7dd3fc;
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(125, 211, 252, 0.24),
+      transparent 38%
+    ),
+    linear-gradient(180deg, rgba(13, 110, 253, 0.16), rgba(255, 255, 255, 0.03));
+  box-shadow:
+    0 0 0 1px rgba(125, 211, 252, 0.2),
+    0 16px 36px rgba(0, 0, 0, 0.22);
+  transform: translateY(-1px);
+}
+
+.upload-dropzone__hero {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.9rem;
+}
+
+.upload-dropzone__eyebrow {
+  color: #7dd3fc;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.upload-dropzone__title {
+  color: #f8f9fa;
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.upload-dropzone__subtitle {
+  color: rgba(248, 249, 250, 0.78);
+  max-width: 46rem;
+}
+
+.upload-dropzone__highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.95rem;
+}
+
+.upload-dropzone__pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.32rem 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: rgba(248, 249, 250, 0.92);
+  line-height: 1.3;
+}
+
+.upload-dropzone__grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.upload-dropzone__card {
+  min-height: 100%;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.8rem;
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.upload-dropzone__card-label {
+  margin-bottom: 0.35rem;
+  color: rgba(248, 249, 250, 0.58);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.upload-dropzone__card-value {
+  margin-bottom: 0.3rem;
+  color: #f8f9fa;
+  font-size: 0.96rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.upload-dropzone__card-note {
+  color: rgba(248, 249, 250, 0.72);
+  font-size: 0.83rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 575.98px) {
+  .upload-dropzone {
+    padding: 0.9rem;
+  }
+
+  .upload-dropzone__title {
+    font-size: 1rem;
+  }
+
+  .upload-dropzone__grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .upload-status-list {
@@ -1050,10 +1181,12 @@ body {
 }
 
 .annotation-stage-surface {
+  --annotation-stage-frame-height: min(72vh, 820px);
+  --annotation-stage-media-max-height: min(68vh, 760px);
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  min-height: min(72vh, 820px);
+  align-items: stretch;
+  min-height: var(--annotation-stage-frame-height);
   padding: 0.75rem;
   border-radius: 0.9rem;
   background:
@@ -1063,15 +1196,39 @@ body {
 }
 
 .annotation-stage-surface .annotation-container {
-  flex: 0 0 auto;
-  max-width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-.annotation-stage-surface .annotation-container > img,
-.annotation-stage-surface .annotation-container > video {
+.annotation-stage-surface .annotation-container.annotation-video-container {
+  position: relative;
   display: block;
+  align-self: stretch;
+  width: 100%;
+  min-height: 0;
+}
+
+.annotation-stage-media {
+  display: block;
+  width: auto;
   max-width: 100%;
+  max-height: var(--annotation-stage-media-max-height);
   height: auto;
+  margin: auto;
+}
+
+.annotation-stage-surface
+  .annotation-container.annotation-video-container
+  > .annotation-stage-media {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  max-height: none;
+  margin: 0;
 }
 
 .annotation-stage-card .video-timeline,

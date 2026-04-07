@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,6 +51,7 @@ class Settings(BaseSettings):
     bootstrap_default_admin_enabled: bool = False
     bootstrap_default_admin_email: str | None = None
     bootstrap_default_admin_password: str | None = None
+    team_active_user_limit: int = 3
     sam2_enabled: bool = False
     sam2_model_cfg: str = "configs/sam2.1/sam2.1_hiera_l.yaml"
     sam2_checkpoint: str = "/app/models/sam2.1_hiera_large.pt"

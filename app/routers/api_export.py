@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 import csv
@@ -25,6 +29,7 @@ from ..models import (
     Project,
     UserRole,
 )
+from ..path_utils import export_item_path_basename
 from ..security import ensure_project_team_access, require_roles
 from ..services.audit import log_audit
 
@@ -460,6 +465,8 @@ def _annotation_export_records(
             "project_id": project.id,
             "item_id": ann.item_id,
             "item_path": item.path,
+            "item_display_path": item.display_path,
+            "item_source_media_type": item.source_media_type,
             "item_kind": item.kind.value,
             "client_uid": ann.client_uid,
             "frame_index": ann.frame_index,
@@ -598,6 +605,8 @@ def _export_lf_video_tracks(
             "item": {
                 "id": item.id,
                 "path": item.path,
+                "display_path": item.display_path,
+                "source_media_type": item.source_media_type,
                 "kind": item.kind.value,
                 "width": item.w,
                 "height": item.h,
@@ -660,7 +669,10 @@ def _export_lf_project(
     for item in sorted(items, key=lambda i: i.id):
         rec: dict = {
             "id": item.id,
-            "path": item.path,
+            # Keep the export self-contained while avoiding project-specific path prefixes.
+            "path": export_item_path_basename(item.path),
+            "display_path": item.display_path,
+            "source_media_type": item.source_media_type,
             "kind": item.kind.value,
             "w": item.w,
             "h": item.h,
@@ -802,6 +814,8 @@ def export_project(
                 "project_id",
                 "item_id",
                 "item_path",
+                "item_display_path",
+                "item_source_media_type",
                 "item_kind",
                 "client_uid",
                 "frame_index",
@@ -832,6 +846,8 @@ def export_project(
                     project.id,
                     ann.item_id,
                     item.path,
+                    item.display_path,
+                    item.source_media_type,
                     item.kind.value,
                     ann.client_uid,
                     ann.frame_index,

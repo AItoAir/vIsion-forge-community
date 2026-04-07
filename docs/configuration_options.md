@@ -67,6 +67,14 @@ seed the first admin account.
 store legacy SHA-256 password hashes. Fresh Argon2id password hashes do not use
 that setting.
 
+### Team seat limit
+
+- `TEAM_ACTIVE_USER_LIMIT`
+
+Community Edition defaults this to `3`, which caps each team to three active
+users. Update the number in `.env` for a licensed deployment, or set it to `0`
+to disable the cap entirely.
+
 ### SAM2 and inference
 
 - `SAM2_ENABLED`

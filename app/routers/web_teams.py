@@ -1,23 +1,25 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
-from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..database import get_db
 from ..models import Team, User, UserRole
 from ..security import require_roles, hash_password
+from ..template_utils import create_templates
 
 router = APIRouter(include_in_schema=False)
 
-templates = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent.parent.parent / "templates")
-)
+templates = create_templates()
 
 
 ROLE_DISPLAY_NAMES = {
@@ -80,7 +82,7 @@ ROLE_MATRIX_ROWS = [
     },
     {
         "capability": "Manage project settings and labels",
-        "detail": "Create projects, edit project details, and manage label classes.",
+        "detail": "Create projects, edit project details, manage label classes, and delete projects.",
         "annotator": False,
         "reviewer": False,
         "project_admin": True,
@@ -161,6 +163,43 @@ def _team_settings_redirect_url(
     return f"{base_url}?{urlencode(params)}"
 
 
+def _configured_team_active_user_limit() -> int | None:
+    configured_limit = int(settings.team_active_user_limit or 0)
+    if configured_limit <= 0:
+        return None
+    return configured_limit
+
+
+def _count_active_team_users(db: Session, team_id: int) -> int:
+    return int(
+        db.scalar(
+            select(func.count(User.id)).where(
+                User.team_id == team_id,
+                User.is_active.is_(True),
+            )
+        )
+        or 0
+    )
+
+
+def _user_counts_toward_team_active_user_limit(user: User, team_id: int) -> bool:
+    return user.team_id == team_id and user.is_active
+
+
+def _team_settings_error_message(error: str | None) -> str | None:
+    if error == "active_user_limit_reached":
+        active_user_limit = _configured_team_active_user_limit()
+        if active_user_limit is None:
+            return None
+        user_label = "user" if active_user_limit == 1 else "users"
+        return (
+            "This team has reached the active user limit "
+            f"({active_user_limit} {user_label}). "
+            "Disable another active account before inviting someone else."
+        )
+    return TEAM_SETTINGS_ERROR_MESSAGES.get(error)
+
+
 @router.get("/teams", response_class=HTMLResponse, name="teams_index")
 def teams_index(
     request: Request,
@@ -226,6 +265,8 @@ def team_settings(
         .scalars()
         .all()
     )
+    active_user_limit = _configured_team_active_user_limit()
+    active_user_count = _count_active_team_users(db, team.id)
 
     return templates.TemplateResponse(
         request=request,
@@ -239,7 +280,12 @@ def team_settings(
             "role_matrix_rows": ROLE_MATRIX_ROWS,
             "role_matrix_notes": ROLE_MATRIX_NOTES,
             "member_notice": TEAM_SETTINGS_NOTICE_MESSAGES.get(notice),
-            "member_error": TEAM_SETTINGS_ERROR_MESSAGES.get(error),
+            "member_error": _team_settings_error_message(error),
+            "active_user_count": active_user_count,
+            "team_active_user_limit": active_user_limit,
+            "team_active_user_limit_reached": (
+                active_user_limit is not None and active_user_count >= active_user_limit
+            ),
             "current_user": current_user,
         },
     )
@@ -281,6 +327,28 @@ def invite_team_member(
                 ),
                 status_code=303,
             )
+
+    active_user_limit = _configured_team_active_user_limit()
+    if active_user_limit is not None:
+        active_user_count = _count_active_team_users(db, team.id)
+        user_already_counts_toward_limit = bool(
+            user
+            and _user_counts_toward_team_active_user_limit(user, team.id)
+        )
+        if (
+            not user_already_counts_toward_limit
+            and active_user_count >= active_user_limit
+        ):
+            return RedirectResponse(
+                url=_team_settings_redirect_url(
+                    request,
+                    team.id,
+                    error="active_user_limit_reached",
+                ),
+                status_code=303,
+            )
+
+    if user:
         user.team_id = team.id
         user.is_active = True
         if password:

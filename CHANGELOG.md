@@ -2,6 +2,17 @@
 
 All notable Community Edition release changes are documented in this file.
 
+## Unreleased
+
+## v0.1.3 - 2026-04-07
+
+Compared with `v0.1.2`, this release mainly adds:
+
+- DICOM and NIfTI medical-image ingest that converts supported uploads into annotation-ready PNG or MP4 previews while preserving the original source file for export.
+- Safe project deletion with full cleanup, configurable team active-user seat limits, and sturdier upload validation and preview fallbacks.
+- Annotation workspace updates for quieter teammate presence, faster autosave, unsaved polygon guards, and browser-safe HEIC display fallbacks.
+- New export tooling for basename-only project item paths and `lf_project_v2` to COCO conversion.
+
 ## v0.1.2 - 2026-04-02
 
 Compared with `v0.1.1`, this release mainly adds:

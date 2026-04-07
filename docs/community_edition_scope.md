@@ -45,6 +45,31 @@ evaluators.
 
 The current public repository does not yet include an S3/object-storage backend.
 
+## Medical imaging support boundary
+
+Community Edition supports medical-image ingest for annotation workflows through
+rendered 2D previews.
+
+Supported source inputs:
+
+- `.dcm` / `.dicom`
+- `.zip` containing a single DICOM series
+- `.nii`
+- `.nii.gz`
+
+Current behavior:
+
+- single-frame studies are rendered as image items
+- multi-frame or volumetric studies are rendered as video-style slice previews
+- medical previews use the same labeling workspace and review flow as standard image and video uploads
+- the original uploaded source file remains available for export and traceability
+
+Not included in this support boundary:
+
+- native 3D volume editing
+- archive uploads containing multiple DICOM series
+- native DICOM or NIfTI annotation export formats
+
 ## Practical support boundary
 
 Community Edition should aim to be:

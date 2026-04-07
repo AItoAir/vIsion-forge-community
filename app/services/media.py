@@ -1,7 +1,12 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 from __future__ import annotations
 
 import json
 import logging
+import mimetypes
 import shutil
 import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -36,9 +41,36 @@ FRAME_RATE_MODE_UNKNOWN = "unknown"
 FRAME_RATE_MODE_CFR = "cfr"
 FRAME_RATE_MODE_VFR = "vfr"
 
+BROWSER_COMPATIBLE_IMAGE_EXTENSIONS = (
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".bmp",
+)
+LEGACY_IMAGE_DISPLAY_PREVIEW_SUFFIX = ".display_preview"
+LEGACY_IMAGE_DISPLAY_PREVIEW_EXTENSION = ".png"
+EXPLICIT_MEDIA_MIME_TYPES = {
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".avif": "image/avif",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+}
+
+
+for suffix, media_type in EXPLICIT_MEDIA_MIME_TYPES.items():
+    mimetypes.add_type(media_type, suffix, strict=False)
+    mimetypes.add_type(media_type, suffix.upper(), strict=False)
+
 
 class MediaProbeError(RuntimeError):
     """Raised when media metadata cannot be extracted."""
+
+
+class DisplayPreviewError(RuntimeError):
+    """Raised when a browser-compatible display preview cannot be generated."""
 
 
 @dataclass(slots=True)
@@ -251,6 +283,43 @@ def _normalize_relative_media_path(relative_path: str) -> str:
     return str(relative_path or "").replace("\\", "/").lstrip("/")
 
 
+def guess_media_type(file_path: Path | str) -> str | None:
+    guessed_type, _encoding = mimetypes.guess_type(str(file_path))
+    return guessed_type
+
+
+def is_browser_compatible_image_path(relative_path: str) -> bool:
+    normalized_name = PurePosixPath(_normalize_relative_media_path(relative_path)).name.lower()
+    return any(normalized_name.endswith(extension) for extension in BROWSER_COMPATIBLE_IMAGE_EXTENSIONS)
+
+
+def needs_browser_compatible_image_preview(item: Item) -> bool:
+    return (
+        item.kind == ItemKind.image
+        and item.source_media_type is None
+        and not is_browser_compatible_image_path(item.path)
+    )
+
+
+def preferred_item_media_variant(item: Item) -> str:
+    if item.kind == ItemKind.video:
+        return "display"
+    if item.display_path or needs_browser_compatible_image_preview(item):
+        return "display"
+    return "original"
+
+
+def legacy_image_display_preview_relative_path(relative_media_path: str) -> str:
+    rel_path = PurePosixPath(_normalize_relative_media_path(relative_media_path))
+    preview_name = (
+        f"{rel_path.stem}{LEGACY_IMAGE_DISPLAY_PREVIEW_SUFFIX}"
+        f"{LEGACY_IMAGE_DISPLAY_PREVIEW_EXTENSION}"
+    )
+    if str(rel_path.parent) in {"", "."}:
+        return preview_name
+    return str(rel_path.parent / preview_name)
+
+
 def _safe_static_path(relative_path: str) -> Path:
     root = static_root().resolve()
     candidate = (root / _normalize_relative_media_path(relative_path)).resolve()
@@ -265,6 +334,103 @@ def resolve_media_source_path(item: Item) -> Path | None:
     except MediaProbeError:
         return None
     return canonical_path if canonical_path.is_file() else None
+
+
+def annotation_source_relative_path(item: Item) -> str:
+    return _normalize_relative_media_path(item.display_path or item.path)
+
+
+def resolve_annotation_source_path(item: Item) -> Path | None:
+    try:
+        canonical_path = _safe_static_path(annotation_source_relative_path(item))
+    except MediaProbeError:
+        return None
+    return canonical_path if canonical_path.is_file() else None
+
+
+def _write_legacy_image_display_preview(source_path: Path, preview_path: Path) -> None:
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_preview_path = preview_path.with_name(
+        f"{preview_path.stem}.tmp{preview_path.suffix}"
+    )
+    try:
+        temp_preview_path.unlink(missing_ok=True)
+    except TypeError:
+        if temp_preview_path.exists():
+            temp_preview_path.unlink()
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-v",
+        "error",
+        "-i",
+        str(source_path),
+        "-map",
+        "0:v:0",
+        "-frames:v",
+        "1",
+        "-f",
+        "image2",
+        str(temp_preview_path),
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise DisplayPreviewError("ffmpeg is not available in the runtime environment") from exc
+
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise DisplayPreviewError(stderr or "Failed to generate browser-compatible display preview")
+
+    temp_preview_path.replace(preview_path)
+
+
+def ensure_browser_compatible_image_preview(item: Item) -> bool:
+    if not needs_browser_compatible_image_preview(item):
+        return False
+
+    source_path = resolve_media_source_path(item)
+    if source_path is None or not source_path.is_file():
+        return False
+
+    preview_relative_path = legacy_image_display_preview_relative_path(item.path)
+    preview_path = _safe_static_path(preview_relative_path)
+
+    if not preview_path.is_file():
+        try:
+            _write_legacy_image_display_preview(source_path, preview_path)
+        except DisplayPreviewError:
+            logger.warning(
+                "Failed to generate browser-compatible image preview",
+                extra={
+                    "item_id": item.id,
+                    "item_path": item.path,
+                    "preview_path": preview_relative_path,
+                },
+            )
+            return False
+        finally:
+            temp_preview_path = preview_path.with_name(
+                f"{preview_path.stem}.tmp{preview_path.suffix}"
+            )
+            try:
+                temp_preview_path.unlink(missing_ok=True)
+            except TypeError:
+                if temp_preview_path.exists():
+                    temp_preview_path.unlink()
+
+    normalized_display_path = _normalize_relative_media_path(item.display_path or "")
+    if normalized_display_path == preview_relative_path:
+        return False
+
+    item.display_path = preview_relative_path
+    return True
 
 
 def _normalize_media_conversion_status(value: str | None, *, kind: ItemKind) -> str:
@@ -298,7 +464,7 @@ def _variable_frame_rate_error_message() -> str:
 
 
 def _missing_media_source_error_message(item: Item) -> str:
-    return f"Video source was not found: {item.path}"
+    return f"Video source was not found: {annotation_source_relative_path(item)}"
 
 
 def _job_failure_message(exc: Exception) -> str:
@@ -394,7 +560,9 @@ def _collect_labeling_proxy_storage_candidates(
     item_by_proxy_path: dict[str, Item] = {}
     for item in video_items:
         try:
-            proxy_path = _current_labeling_proxy_path(item.path).resolve()
+            proxy_path = _current_labeling_proxy_path(
+                annotation_source_relative_path(item)
+            ).resolve()
         except MediaProbeError:
             continue
         item_by_proxy_path[str(proxy_path)] = item
@@ -567,8 +735,9 @@ def _evict_labeling_proxy_candidate(
     reason: str,
 ) -> None:
     if candidate.item is not None:
-        _remove_obsolete_labeling_proxy_files(candidate.item.path, keep_proxy_path=None)
-        remaining_proxy_files = _iter_labeling_proxy_files(candidate.item.path)
+        annotation_relative_path = annotation_source_relative_path(candidate.item)
+        _remove_obsolete_labeling_proxy_files(annotation_relative_path, keep_proxy_path=None)
+        remaining_proxy_files = _iter_labeling_proxy_files(annotation_relative_path)
         if remaining_proxy_files:
             logger.warning(
                 "Converted video eviction left files behind",
@@ -704,18 +873,19 @@ def ensure_labeling_proxy_video(
     metadata: MediaMetadata | None = None,
 ) -> str:
     if item.kind != ItemKind.video or not settings.labeling_proxy_enabled:
-        return item.path
+        return annotation_source_relative_path(item)
 
-    source_path = resolve_media_source_path(item)
+    source_relative_path = annotation_source_relative_path(item)
+    source_path = resolve_annotation_source_path(item)
     if source_path is None or not source_path.is_file():
         raise LabelingProxyError(_missing_media_source_error_message(item))
 
-    proxy_relative_path = labeling_proxy_relative_path(item.path)
+    proxy_relative_path = labeling_proxy_relative_path(source_relative_path)
     proxy_path = _safe_static_path(proxy_relative_path)
     proxy_path.parent.mkdir(parents=True, exist_ok=True)
 
     if proxy_path.is_file():
-        _remove_obsolete_labeling_proxy_files(item.path, keep_proxy_path=proxy_path)
+        _remove_obsolete_labeling_proxy_files(source_relative_path, keep_proxy_path=proxy_path)
         return proxy_relative_path
 
     if metadata is None:
@@ -727,10 +897,10 @@ def ensure_labeling_proxy_video(
     if metadata.frame_rate_mode == FRAME_RATE_MODE_VFR:
         raise LabelingProxyError(_variable_frame_rate_error_message())
 
-    item_lock = _labeling_proxy_lock_for(item.path)
+    item_lock = _labeling_proxy_lock_for(source_relative_path)
     with item_lock:
         if proxy_path.is_file():
-            _remove_obsolete_labeling_proxy_files(item.path, keep_proxy_path=proxy_path)
+            _remove_obsolete_labeling_proxy_files(source_relative_path, keep_proxy_path=proxy_path)
             return proxy_relative_path
 
         temp_proxy_path = proxy_path.with_name(f"{proxy_path.stem}.tmp{proxy_path.suffix}")
@@ -799,12 +969,12 @@ def ensure_labeling_proxy_video(
             "Generated labeling proxy video",
             extra={
                 "item_id": item.id,
-                "source_path": item.path,
+                "source_path": source_relative_path,
                 "proxy_path": proxy_relative_path,
                 "proxy_profile": labeling_proxy_profile_token(),
             },
         )
-        _remove_obsolete_labeling_proxy_files(item.path, keep_proxy_path=proxy_path)
+        _remove_obsolete_labeling_proxy_files(source_relative_path, keep_proxy_path=proxy_path)
 
     return proxy_relative_path
 
@@ -833,8 +1003,9 @@ def sync_item_media_conversion_state(item: Item) -> bool:
 
     proxy_exists = False
     proxy_size_bytes = None
+    annotation_relative_path = annotation_source_relative_path(item)
     try:
-        proxy_path = _current_labeling_proxy_path(item.path)
+        proxy_path = _current_labeling_proxy_path(annotation_relative_path)
         proxy_exists = proxy_path.is_file()
         if proxy_exists:
             proxy_size_bytes = max(0, int(proxy_path.stat().st_size or 0))
@@ -850,7 +1021,7 @@ def sync_item_media_conversion_state(item: Item) -> bool:
         assign("media_conversion_error", None)
         return changed
 
-    source_path = resolve_media_source_path(item)
+    source_path = resolve_annotation_source_path(item)
     if source_path is None or not source_path.is_file():
         assign("media_conversion_status", MEDIA_CONVERSION_STATUS_FAILED)
         assign("media_conversion_error", _missing_media_source_error_message(item))
@@ -890,7 +1061,7 @@ def touch_media_conversion_access(item: Item) -> bool:
         return False
 
     try:
-        proxy_path = _current_labeling_proxy_path(item.path)
+        proxy_path = _current_labeling_proxy_path(annotation_source_relative_path(item))
     except MediaProbeError:
         return False
     if not proxy_path.is_file():
@@ -928,12 +1099,13 @@ def build_annotation_media_state(item: Item) -> AnnotationMediaState:
             failed=False,
             pending=False,
             frame_rate_mode=frame_rate_mode,
-            display_media_path=item.path,
+            display_media_path=annotation_source_relative_path(item),
         )
 
-    display_media_path = item.path
+    annotation_relative_path = annotation_source_relative_path(item)
+    display_media_path = annotation_relative_path
     if status == MEDIA_CONVERSION_STATUS_READY:
-        display_media_path = labeling_proxy_relative_path(item.path)
+        display_media_path = labeling_proxy_relative_path(annotation_relative_path)
 
     detail = (item.media_conversion_error or "").strip() or None
     if status == MEDIA_CONVERSION_STATUS_READY:
@@ -994,13 +1166,22 @@ def build_annotation_media_state(item: Item) -> AnnotationMediaState:
 
 def resolve_annotation_media_path(item: Item) -> str:
     if item.kind != ItemKind.video:
-        return item.path
+        if item.display_path:
+            return _normalize_relative_media_path(item.display_path)
+        if needs_browser_compatible_image_preview(item):
+            return legacy_image_display_preview_relative_path(item.path)
+        return annotation_source_relative_path(item)
 
+    annotation_relative_path = annotation_source_relative_path(item)
     try:
-        proxy_path = _current_labeling_proxy_path(item.path)
+        proxy_path = _current_labeling_proxy_path(annotation_relative_path)
     except MediaProbeError:
-        return item.path
-    return labeling_proxy_relative_path(item.path) if proxy_path.is_file() else item.path
+        return annotation_relative_path
+    return (
+        labeling_proxy_relative_path(annotation_relative_path)
+        if proxy_path.is_file()
+        else annotation_relative_path
+    )
 
 
 def _labeling_proxy_executor() -> ThreadPoolExecutor:
@@ -1080,7 +1261,7 @@ def _run_media_conversion_job(item_id: int) -> None:
             if item is None or item.kind != ItemKind.video:
                 return
 
-            source_path = resolve_media_source_path(item)
+            source_path = resolve_annotation_source_path(item)
             if source_path is None or not source_path.is_file():
                 raise LabelingProxyError(_missing_media_source_error_message(item))
             estimated_reserve_bytes = max(0, int(source_path.stat().st_size or 0))
@@ -1105,7 +1286,7 @@ def _run_media_conversion_job(item_id: int) -> None:
             refreshed_item = db.get(Item, item_id)
             if refreshed_item is None:
                 return
-            proxy_path = _current_labeling_proxy_path(refreshed_item.path)
+            proxy_path = _current_labeling_proxy_path(annotation_source_relative_path(refreshed_item))
             proxy_size_bytes = None
             if proxy_path.is_file():
                 proxy_size_bytes = max(0, int(proxy_path.stat().st_size or 0))
@@ -1159,12 +1340,13 @@ def remove_labeling_proxy_video(item: Item) -> None:
     if item.kind != ItemKind.video:
         return
 
+    annotation_relative_path = annotation_source_relative_path(item)
     try:
-        proxy_paths = _iter_labeling_proxy_files(item.path)
+        proxy_paths = _iter_labeling_proxy_files(annotation_relative_path)
     except MediaProbeError:
         logger.exception(
             "Failed to resolve labeling proxy path during item cleanup",
-            extra={"item_id": item.id, "item_path": item.path},
+            extra={"item_id": item.id, "item_path": annotation_relative_path},
         )
         return
 
@@ -1177,5 +1359,5 @@ def remove_labeling_proxy_video(item: Item) -> None:
         except Exception:
             logger.exception(
                 "Failed to delete labeling proxy video",
-                extra={"item_id": item.id, "item_path": item.path, "proxy_path": str(proxy_path)},
+                extra={"item_id": item.id, "item_path": annotation_relative_path, "proxy_path": str(proxy_path)},
             )

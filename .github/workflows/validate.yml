@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: AItoAir, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+# See LICENSE for the project-specific license terms.
+
 name: Validate
 
 on:
@@ -29,4 +33,5 @@ jobs:
         run: python -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Check public release boundaries
+        if: github.repository == 'AItoAir/frame-pin-community' || github.repository == 'AItoAir/framepins'
         run: python tools/check_public_release.py
